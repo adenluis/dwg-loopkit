@@ -2,7 +2,7 @@
   "name": "@dwg/loop",
   "version": "0.1.0",
   "description": "DWG Loop Kit — local MCP server that connects your AI to DWG INTEL research tools and your private Obsidian vault",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "type": "module",
   "main": "dist/serve.js",
   "bin": {
@@ -17,7 +17,7 @@
   "files": [
     "dist/",
     "README.md",
-    "README_DEV.md"
+    "LICENSE"
   ],
   "scripts": {
     "build": "tsc && node scripts/copy-assets.js",
@@ -42,6 +42,6 @@
     "node": ">=20.0.0"
   },
   "publishConfig": {
-    "access": "restricted"
+    "access": "public"
   }
 }

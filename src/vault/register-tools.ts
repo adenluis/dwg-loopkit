@@ -1,6 +1,7 @@
 import { FileSystemService, FrontmatterHandler, PathFilter, SearchService } from "@bitbonsai/mcpvault";
 import type { LoopConfig } from "../config.js";
 import type { ToolDef, ToolHandler } from "../types.js";
+import { shouldBlockWrite } from "../safety/secret-scan.js";
 
 export function createVaultTools(config: LoopConfig): { tools: ToolDef[]; handler: ToolHandler } {
   const vaultPath = config.vault.path;
@@ -128,19 +129,35 @@ export function createVaultTools(config: LoopConfig): { tools: ToolDef[]; handle
         return { content: [{ type: "text", text: JSON.stringify({ fm: note.frontmatter, content: note.content }, null, indent) }] };
       }
       case `${prefix}write_note`: {
+        const content = args.content as string;
+        const scan = shouldBlockWrite(content);
+        if (scan.block) {
+          return {
+            content: [{ type: "text", text: `BLOCKED: ${scan.reason}. Seed phrases, private keys, passwords, and API keys are never saved to the vault.` }],
+            isError: true,
+          };
+        }
         await fs.writeNote({
           path: args.path as string,
-          content: args.content as string,
+          content,
           frontmatter: args.frontmatter as Record<string, unknown> | undefined,
           mode: ((args.mode as string) || "overwrite") as "overwrite" | "append" | "prepend",
         });
         return { content: [{ type: "text", text: `Successfully wrote note: ${args.path} (mode: ${args.mode || "overwrite"})` }] };
       }
       case `${prefix}patch_note`: {
+        const newString = args.newString as string;
+        const scan = shouldBlockWrite(newString);
+        if (scan.block) {
+          return {
+            content: [{ type: "text", text: `BLOCKED: ${scan.reason}. Seed phrases, private keys, passwords, and API keys are never saved to the vault.` }],
+            isError: true,
+          };
+        }
         const result = await fs.patchNote({
           path: args.path as string,
           oldString: args.oldString as string,
-          newString: args.newString as string,
+          newString,
           replaceAll: args.replaceAll as boolean,
         });
         return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }], isError: !result.success };
