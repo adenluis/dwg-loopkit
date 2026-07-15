@@ -1,0 +1,47 @@
+{
+  "name": "@dwg/loop",
+  "version": "0.1.0",
+  "description": "DWG Loop Kit — local MCP server that connects your AI to DWG INTEL research tools and your private Obsidian vault",
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "dist/serve.js",
+  "bin": {
+    "dwg-loop": "dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/serve.js",
+      "types": "./dist/serve.d.ts"
+    }
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "README_DEV.md"
+  ],
+  "scripts": {
+    "build": "tsc && node scripts/copy-assets.js",
+    "dev": "tsx src/cli.ts",
+    "serve": "tsx src/cli.ts serve",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "dependencies": {
+    "@bitbonsai/mcpvault": "0.12.1",
+    "@modelcontextprotocol/sdk": "^1.20.0",
+    "commander": "^12.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "publishConfig": {
+    "access": "restricted"
+  }
+}
