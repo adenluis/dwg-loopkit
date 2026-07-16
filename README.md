@@ -1,13 +1,13 @@
 # DWG Loop Kit
 
-> Local MCP server that connects your AI to [DWG INTEL](https://dwg-research-center.vercel.app) research tools and your private Obsidian vault — in one conversation.
+> Local MCP server that connects your AI to [DWG INTEL](https://dwg-research-center.vercel.app) research tools and your private Obsidian vault - in one conversation.
 
 ## What it does
 
-- **DWG facts** — proxies your DWG MCP token to access live crypto research tools
-- **Private vault** — reads/writes your local knowledge base via [mcpvault](https://github.com/bitbonsai/mcpvault) services
-- **Playbook** — injects operating rules so the AI knows how to read, search, save, and retrieve from your vault
-- **One connection** — your AI client only needs one MCP config entry
+- **DWG facts** - proxies your DWG MCP token to access live crypto research tools
+- **Private vault** - reads/writes your local knowledge base via [mcpvault](https://github.com/bitbonsai/mcpvault) services
+- **Playbook** - injects operating rules so the AI knows how to read, search, save, and retrieve from your vault
+- **One connection** - your AI client only needs one MCP config entry
 
 ## Quick start
 
@@ -35,7 +35,7 @@ This will:
 Paste the generated config into:
 - **Claude Desktop:** `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows)
 - **opencode:** `~/.config/opencode/opencode.json`
-- **Cursor:** Settings → MCP
+- **Cursor:** Settings > MCP
 
 Restart your AI client. On first connection, the AI will greet you and offer to run the onboarding interview.
 
