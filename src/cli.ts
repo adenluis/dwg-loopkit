@@ -394,8 +394,10 @@ function emitConfigJson(client: string, config: LoopConfig, configPath?: string,
 }
 
 async function applySeed(vaultPath: string, force = false, upgrade = false): Promise<void> {
-  const seedDir = join(__dirname, "..", "seed");
-
+  let seedDir = join(__dirname, "..", "seed");
+  if (!existsSync(seedDir)) {
+    seedDir = join(__dirname, "seed");
+  }
   if (!existsSync(seedDir)) {
     throw new Error(`Seed directory not found: ${seedDir}`);
   }
