@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "description": "DWG Loop Kit — local MCP server that connects your AI to DWG INTEL research tools and your private Obsidian vault",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/adenluis/dwg-loopkit"
+  },
   "type": "module",
   "main": "dist/serve.js",
   "bin": {
