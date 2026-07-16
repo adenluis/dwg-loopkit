@@ -32,6 +32,7 @@ program
   .option("--token-env <var>", "store token as env var reference instead of file")
   .option("--client <name>", "AI client to emit config for: claude | opencode | cursor (default: claude)")
   .option("--yes", "skip all prompts, use defaults or provided flags")
+  .option("--local", "generate MCP config pointing at this local build instead of npx")
   .action(init);
 
 program
@@ -67,6 +68,7 @@ program
   .description("Print MCP config JSON for an AI client")
   .argument("<client>", "client name: claude | opencode | cursor")
   .option("--config <path>", "path to config.json")
+  .option("--local", "generate MCP config pointing at this local build instead of npx")
   .action(emitConfigAction);
 
 program.parse();
@@ -78,6 +80,7 @@ async function init(opts: {
   tokenEnv?: string;
   client?: string;
   yes?: boolean;
+  local?: boolean;
 }): Promise<void> {
   const rl = createInterface({ input, output });
   const nonInteractive = opts.yes === true;
@@ -169,7 +172,7 @@ async function init(opts: {
   console.log("\n  Vault seeded. Config saved to:\n");
   console.log(`    ${CONFIG_PATH}`);
   console.log(`\n  Your ${client} MCP config:\n`);
-  console.log(emitConfigJson(client, config));
+  console.log(emitConfigJson(client, config, CONFIG_PATH, opts.local ?? false));
   console.log("\n  Paste this into your AI client's MCP settings and restart.\n");
   console.log("  After connecting, say \"help\" to see all available commands.\n");
 }
@@ -332,15 +335,22 @@ async function configCmd(
 
 async function emitConfigAction(
   client: string,
-  opts: { config?: string }
+  opts: { config?: string; local?: boolean }
 ): Promise<void> {
   const config = loadConfigSafe(opts.config ?? process.env.DWG_LOOP_CONFIG ?? CONFIG_PATH);
   const configPath = opts.config ?? process.env.DWG_LOOP_CONFIG ?? CONFIG_PATH;
-  console.log(emitConfigJson(client, config, configPath));
+  console.log(emitConfigJson(client, config, configPath, opts.local ?? false));
 }
 
-function emitConfigJson(client: string, config: LoopConfig, configPath?: string): string {
+function emitConfigJson(client: string, config: LoopConfig, configPath?: string, local = false): string {
   const cfgPath = configPath ?? CONFIG_PATH;
+
+  const localCliPath = resolve(__dirname, "cli.js");
+
+  const claudeCommand = local ? "node" : "npx";
+  const claudeArgs = local ? [localCliPath, "serve"] : ["-y", "@dwg/loop", "serve"];
+
+  const opencodeCommand = local ? ["node", localCliPath, "serve"] : ["npx", "-y", "@dwg/loop", "serve"];
 
   switch (client.toLowerCase()) {
     case "claude":
@@ -348,8 +358,8 @@ function emitConfigJson(client: string, config: LoopConfig, configPath?: string)
       return JSON.stringify({
         mcpServers: {
           "dwg-loop": {
-            command: "npx",
-            args: ["-y", "@dwg/loop", "serve"],
+            command: claudeCommand,
+            args: claudeArgs,
             env: { DWG_LOOP_CONFIG: cfgPath },
           },
         },
@@ -360,7 +370,7 @@ function emitConfigJson(client: string, config: LoopConfig, configPath?: string)
         mcp: {
           "dwg-loop": {
             type: "local",
-            command: ["npx", "-y", "@dwg/loop", "serve"],
+            command: opencodeCommand,
             enabled: true,
             environment: { DWG_LOOP_CONFIG: cfgPath },
           },
@@ -371,8 +381,8 @@ function emitConfigJson(client: string, config: LoopConfig, configPath?: string)
       return JSON.stringify({
         mcpServers: {
           "dwg-loop": {
-            command: "npx",
-            args: ["-y", "@dwg/loop", "serve"],
+            command: claudeCommand,
+            args: claudeArgs,
             env: { DWG_LOOP_CONFIG: cfgPath },
           },
         },
