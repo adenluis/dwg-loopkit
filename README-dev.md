@@ -17,45 +17,44 @@ The package is not yet published to npm. Install from the private GitHub repo.
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org) **v20 or later** - check with 
-ode -v
-- Access to the denluis/dwg-loopkit GitHub repo
-- Your DWG INTEL MCP token (starts with dwg_...)
+- [Node.js](https://nodejs.org) **v20 or later** - check with `node -v`
+- Access to the `adenluis/dwg-loopkit` GitHub repo
+- Your DWG INTEL MCP token (starts with `dwg_...`)
 
 ### Step 1 - Clone and build
 
-`ash
+```bash
 git clone https://github.com/adenluis/dwg-loopkit.git
 cd dwg-loopkit
 npm install
 npm run build
-`
+```
 
 ### Step 2 - Run init
 
-`ash
+```bash
 node dist/cli.js init
-`
+```
 
 This will:
 1. Ask for your vault folder path (or create one)
 2. Ask for your DWG MCP token
 3. Ask which AI client you use (claude / opencode / cursor)
 4. Seed the vault with folder structure and rule files
-5. Save config to ~/.dwg-loop/config.json
+5. Save config to `~/.dwg-loop/config.json`
 6. Print the MCP config to paste into your AI client
 
-Use --local so the generated config points at this local build instead of npx:
+Use `--local` so the generated config points at this local build instead of npx:
 
-`ash
+```bash
 node dist/cli.js init --local --client opencode
-`
+```
 
 Or run fully non-interactive:
 
-`ash
+```bash
 node dist/cli.js init --local --client opencode --vault ~/dwg-vault --token dwg_xxx --yes
-`
+```
 
 ### Step 3 - Connect your AI
 
@@ -63,17 +62,17 @@ Paste the generated config into your AI client's MCP settings. Supported clients
 
 | Client | --client flag | Status | Config location | Notes |
 |---|---|---|---|---|
-| **opencode** | --client opencode | Tested and working | opencode.json or opencode.jsonc in your project or ~/.config/opencode/ | Primary test client. Uses 	ype: local format. |
-| **Claude Desktop** | --client claude | Config generated, untested | macOS: ~/Library/Application Support/Claude/claude_desktop_config.json Windows: `%APPDATA%\Claude\claude_desktop_config.json` | Likely to work well - Claude typically respects MCP instructions. |
-| **Cursor** | --client cursor | Config generated, untested | Settings > MCP | Code editor first; the conversational workflow may feel less natural. |
+| **opencode** | `--client opencode` | Tested and working | `opencode.json` or `opencode.jsonc` in your project or `~/.config/opencode/` | Primary test client. Uses `type: local` format. |
+| **Claude Desktop** | `--client claude` | Config generated, untested | macOS: `~/Library/Application Support/Claude/claude_desktop_config.json` Windows: `%APPDATA%\Claude\claude_desktop_config.json` | Likely to work well - Claude typically respects MCP instructions. |
+| **Cursor** | `--client cursor` | Config generated, untested | Settings > MCP | Code editor first; the conversational workflow may feel less natural. |
 
 Example with a specific client:
 
-`ash
+```bash
 node dist/cli.js init --local --client claude
 node dist/cli.js init --local --client opencode
 node dist/cli.js init --local --client cursor
-`
+```
 
 Other MCP-compatible clients (Claude Code CLI, Cline, Roo Code, Continue.dev) use the same stdio transport and should technically work, but config generation and playbook behaviour are untested.
 
@@ -81,26 +80,26 @@ Restart your AI client. Say **DWG start setup** to begin the onboarding intervie
 
 ### Step 4 - Verify
 
-`ash
+```bash
 node dist/cli.js doctor
-`
+```
 
 Checks: config, vault access, seed, playbook assets, token, DWG connectivity.
 
 ### Updating to latest version
 
-`ash
+```bash
 cd dwg-loopkit
 git pull
 npm install
 npm run build
-`
+```
 
 Your vault and config are not affected. To refresh rule files in your vault:
 
-`ash
+```bash
 node dist/cli.js seed --upgrade
-`
+```
 
 ---
 
@@ -108,12 +107,11 @@ node dist/cli.js seed --upgrade
 
 Once published, the one-command install will be:
 
-`ash
+```bash
 npx -y @dwg/loop init
-`
+```
 
-No clone or build needed. The MCP config will use 
-px -y @dwg/loop serve automatically.
+No clone or build needed. The MCP config will use `npx -y @dwg/loop serve` automatically.
 
 ---
 
@@ -121,24 +119,15 @@ px -y @dwg/loop serve automatically.
 
 | Command | Purpose |
 |---|---|
-| 
-ode dist/cli.js init | First-time setup (interactive or --vault, --token, --client, --yes, --local flags) |
-| 
-ode dist/cli.js serve | Start MCP server (stdio) |
-| 
-ode dist/cli.js doctor | Health check: config, vault, seed, token, DWG connectivity |
-| 
-ode dist/cli.js seed | Apply vault seed (skips existing files) |
-| 
-ode dist/cli.js seed --force | Overwrite existing contract files (DWG-CONTEXT.md, etc.) |
-| 
-ode dist/cli.js seed --upgrade | Refresh .dwg/ rules + schemas only, no touch on personal notes |
-| 
-ode dist/cli.js config [key] [value] | Read/set config |
-| 
-ode dist/cli.js emit-config <client> --local | Print MCP config JSON (claude, opencode, cursor) |
-| 
-ode dist/cli.js version | Print version |
+| `node dist/cli.js init` | First-time setup (interactive or `--vault`, `--token`, `--client`, `--yes`, `--local` flags) |
+| `node dist/cli.js serve` | Start MCP server (stdio) |
+| `node dist/cli.js doctor` | Health check: config, vault, seed, token, DWG connectivity |
+| `node dist/cli.js seed` | Apply vault seed (skips existing files) |
+| `node dist/cli.js seed --force` | Overwrite existing contract files (DWG-CONTEXT.md, etc.) |
+| `node dist/cli.js seed --upgrade` | Refresh `.dwg/` rules + schemas only, no touch on personal notes |
+| `node dist/cli.js config [key] [value]` | Read/set config |
+| `node dist/cli.js emit-config <client> --local` | Print MCP config JSON (claude, opencode, cursor) |
+| `node dist/cli.js version` | Print version |
 
 ## In-session commands
 
@@ -146,17 +135,17 @@ Once connected, say these to your AI. Include "DWG" so the AI knows to use Loop 
 
 | Say this | What happens |
 |---|---|
-| DWG help | Show the full command menu |
-| DWG start setup | Run the onboarding interview (first-run) |
-| DWG status | Show vault path, connection state, vault summary |
-| what DWG wallets do I have | Read your vault profile |
-| DWG save this / DWG remember this | Capture knowledge to the vault |
-| DWG run my knowledge review | Weekly review of vault notes |
-| DWG take stock | Long-term reflection |
+| `DWG help` | Show the full command menu |
+| `DWG start setup` | Run the onboarding interview (first-run) |
+| `DWG status` | Show vault path, connection state, vault summary |
+| `what DWG wallets do I have` | Read your vault profile |
+| `DWG save this` / `DWG remember this` | Capture knowledge to the vault |
+| `DWG run my knowledge review` | Weekly review of vault notes |
+| `DWG take stock` | Long-term reflection |
 
 ## Vault structure
 
-`
+```
 your-vault/
   DWG-CONTEXT.md             # your persistent profile (wallets, watchlist, goals)
   INDEX.md                   # knowledge map
@@ -182,7 +171,7 @@ your-vault/
         wallet-profile.md
         research-result.md
         strategy-note.md
-`
+```
 
 ## Privacy
 
