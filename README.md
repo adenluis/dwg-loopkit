@@ -58,11 +58,15 @@ node dist/cli.js init --local --client opencode --vault ~/dwg-vault --token dwg_
 
 ### Step 3 — Connect your AI
 
-Paste the generated config into:
+Paste the generated config into your AI client's MCP settings. Supported clients:
 
-- **Claude Desktop:** `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows)
-- **opencode:** `opencode.json` or `opencode.jsonc` in your project or `~/.config/opencode/`
-- **Cursor:** Settings → MCP
+| Client | Status | Config location | Notes |
+|---|---|---|---|
+| **opencode** | Tested and working | `opencode.json` or `opencode.jsonc` in your project or `~/.config/opencode/` | Primary test client. Uses `type: "local"` format. |
+| **Claude Desktop** | Config generated, untested | macOS: `~/Library/Application Support/Claude/claude_desktop_config.json` Windows: `%APPDATA%\Claude\claude_desktop_config.json` | Likely to work well — Claude typically respects MCP instructions. |
+| **Cursor** | Config generated, untested | Settings → MCP | Code editor first; the conversational workflow may feel less natural. |
+
+Other MCP-compatible clients (Claude Code CLI, Cline, Roo Code, Continue.dev) use the same stdio transport and should technically work, but config generation and playbook behaviour are untested.
 
 Restart your AI client. Say **DWG start setup** to begin the onboarding interview.
 
