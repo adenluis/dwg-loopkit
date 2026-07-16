@@ -348,9 +348,9 @@ function emitConfigJson(client: string, config: LoopConfig, configPath?: string,
   const localCliPath = resolve(__dirname, "cli.js");
 
   const claudeCommand = local ? "node" : "npx";
-  const claudeArgs = local ? [localCliPath, "serve"] : ["-y", "@dwg/loop", "serve"];
+  const claudeArgs = local ? [localCliPath, "serve"] : ["-y", "@dwgintel/loop", "serve"];
 
-  const opencodeCommand = local ? ["node", localCliPath, "serve"] : ["npx", "-y", "@dwg/loop", "serve"];
+  const opencodeCommand = local ? ["node", localCliPath, "serve"] : ["npx", "-y", "@dwgintel/loop", "serve"];
 
   switch (client.toLowerCase()) {
     case "claude":

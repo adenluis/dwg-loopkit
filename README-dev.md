@@ -108,10 +108,10 @@ node dist/cli.js seed --upgrade
 Once published, the one-command install will be:
 
 ```bash
-npx -y @dwg/loop init
+npx -y @dwgintel/loop init
 ```
 
-No clone or build needed. The MCP config will use `npx -y @dwg/loop serve` automatically.
+No clone or build needed. The MCP config will use `npx -y @dwgintel/loop serve` automatically.
 
 ---
 

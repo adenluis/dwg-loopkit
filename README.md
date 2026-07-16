@@ -20,7 +20,7 @@
 ### Install and set up
 
 ```bash
-npx -y @dwg/loop init
+npx -y @dwgintel/loop init
 ```
 
 This will:
@@ -113,7 +113,7 @@ your-vault/
 
 ## How updates work
 
-- Bump `@dwg/loop` version in your AI client config (or re-run `npx -y @dwg/loop@latest init`)
+- Bump `@dwgintel/loop` version in your AI client config (or re-run `npx -y @dwgintel/loop@latest init`)
 - Run `dwg-loop seed --upgrade` to refresh rule files without touching your personal notes
 - One version number for support: `dwg-loop version`
 

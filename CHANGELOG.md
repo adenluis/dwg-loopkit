@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Local MCP server connecting AI to DWG INTEL research tools and private vault
-- Single `@dwg/loop` package with vault tools (mcpvault) + DWG proxy
+- Single `@dwgintel/loop` package with vault tools (mcpvault) + DWG proxy
 - Playbook system: always-injected operating core + on-demand rule modules
 - Session-start, status, help, and vault_get_context tools for discoverability
 - Onboarding interview with one-question-at-a-time + no-web-search guardrails
