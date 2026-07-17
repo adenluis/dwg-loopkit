@@ -10,6 +10,17 @@ import { stdin as input, stdout as output } from "process";
 import { DEFAULT_CONFIG, DEFAULT_DWG_MCP_URL } from "./config.js";
 import type { LoopConfig } from "./config.js";
 import { serve } from "./serve.js";
+import {
+  CLIENTS,
+  resolveClientId,
+  generateConfigBlock,
+  autoWriteConfig,
+  getConfigFilePath,
+  detectLocalCliPath,
+  setLocalCliPath,
+  getClientHelpText,
+} from "./clients.js";
+import type { ClientId, Scope } from "./clients.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -30,7 +41,8 @@ program
   .option("--token <token>", "DWG MCP token (skip prompt)")
   .option("--mcp-url <url>", "DWG MCP server URL", DEFAULT_DWG_MCP_URL)
   .option("--token-env <var>", "store token as env var reference instead of file")
-  .option("--client <name>", "AI client to emit config for: claude | opencode | cursor (default: claude)")
+  .option("--client <name>", "AI client: opencode | claude | claude-code | cursor | codex | other")
+  .option("--scope <scope>", "config scope: global | project (default: global)")
   .option("--yes", "skip all prompts, use defaults or provided flags")
   .option("--local", "generate MCP config pointing at this local build instead of npx")
   .action(init);
@@ -66,8 +78,9 @@ program
 program
   .command("emit-config")
   .description("Print MCP config JSON for an AI client")
-  .argument("<client>", "client name: claude | opencode | cursor")
+  .argument("<client>", "client: opencode | claude | claude-code | cursor | codex | other")
   .option("--config <path>", "path to config.json")
+  .option("--scope <scope>", "config scope: global | project (default: global)")
   .option("--local", "generate MCP config pointing at this local build instead of npx")
   .action(emitConfigAction);
 
@@ -79,6 +92,7 @@ async function init(opts: {
   mcpUrl: string;
   tokenEnv?: string;
   client?: string;
+  scope?: string;
   yes?: boolean;
   local?: boolean;
 }): Promise<void> {
@@ -138,10 +152,49 @@ async function init(opts: {
   }
 
   // Client selection
-  let client = opts.client ?? "claude";
-  if (!nonInteractive && !opts.client) {
-    const answer = await rl.question("  Which AI client? (claude/opencode/cursor) [claude]: ");
-    if (answer.trim()) client = answer.trim().toLowerCase();
+  let clientId: ClientId;
+  if (opts.client) {
+    clientId = resolveClientId(opts.client);
+  } else if (nonInteractive) {
+    clientId = "other";
+  } else {
+    console.log("\n  Which AI client do you use?\n");
+    CLIENTS.forEach((c, i) => {
+      const num = i + 1;
+      const autoTag =
+        c.autoWriteStrategy === "cli"
+          ? "(auto-configure via CLI)"
+          : c.autoWriteStrategy === "file"
+            ? "(auto-configure)"
+            : "(print config for manual setup)";
+      console.log(`    ${num}. ${c.label} ${autoTag}`);
+    });
+    console.log();
+    const answer = await rl.question(`  Enter choice [1]: `);
+    const idx = parseInt(answer.trim(), 10) || 1;
+    const clamped = Math.max(1, Math.min(idx, CLIENTS.length));
+    clientId = CLIENTS[clamped - 1].id;
+  }
+
+  // Scope selection
+  let scope: Scope = "global";
+  const clientDef = CLIENTS.find((c) => c.id === clientId)!;
+  if (clientDef.hasScopeChoice) {
+    if (opts.scope) {
+      scope = opts.scope === "project" ? "project" : "global";
+    } else if (!nonInteractive) {
+      const answer = await rl.question("\n  Install globally or for this project only? (global/project) [global]: ");
+      if (answer.trim().toLowerCase().startsWith("p")) {
+        scope = "project";
+      }
+    }
+  }
+
+  // Local path detection
+  if (opts.local) {
+    setLocalCliPath(resolve(__dirname, "cli.js"));
+  } else {
+    setLocalCliPath(null);
   }
 
   await rl.close();
@@ -171,10 +224,34 @@ async function init(opts: {
 
   console.log("\n  Vault seeded. Config saved to:\n");
   console.log(`    ${CONFIG_PATH}`);
-  console.log(`\n  Your ${client} MCP config:\n`);
-  console.log(emitConfigJson(client, config, CONFIG_PATH, opts.local ?? false));
-  console.log("\n  Paste this into your AI client's MCP settings and restart.\n");
-  console.log("  After connecting, say \"help\" to see all available commands.\n");
+
+  // Auto-write or print config
+  const localCliPath = detectLocalCliPath();
+
+  console.log(`\n  Configuring ${clientDef.label} (${scope} scope)...\n`);
+
+  const result = autoWriteConfig(clientId, CONFIG_PATH, scope, localCliPath);
+
+  if (result.success) {
+    console.log(`  [OK] ${result.message}`);
+    console.log("\n  Restart your AI client. After connecting, say \"DWG help\" to see all commands.\n");
+  } else {
+    console.log(`  [!] ${result.message}`);
+    console.log(`\n  Your ${clientDef.label} MCP config:\n`);
+    console.log(generateConfigBlock(clientId, CONFIG_PATH, localCliPath));
+
+    if (result.configPath) {
+      console.log(`\n  Paste this into: ${result.configPath}\n`);
+    } else {
+      console.log("\n  Paste this into your AI client's MCP configuration.\n");
+    }
+
+    if (clientId === "other") {
+      console.log(`  ${getClientHelpText(clientId)}\n`);
+    }
+
+    console.log("  After connecting, say \"DWG help\" to see all commands.\n");
+  }
 }
 
 async function serveCmd(opts: { config?: string }): Promise<void> {
@@ -335,61 +412,24 @@ async function configCmd(
 
 async function emitConfigAction(
   client: string,
-  opts: { config?: string; local?: boolean }
+  opts: { config?: string; local?: boolean; scope?: string }
 ): Promise<void> {
-  const config = loadConfigSafe(opts.config ?? process.env.DWG_LOOP_CONFIG ?? CONFIG_PATH);
   const configPath = opts.config ?? process.env.DWG_LOOP_CONFIG ?? CONFIG_PATH;
-  console.log(emitConfigJson(client, config, configPath, opts.local ?? false));
-}
+  const clientId = resolveClientId(client);
+  const scope: Scope = opts.scope === "project" ? "project" : "global";
 
-function emitConfigJson(client: string, config: LoopConfig, configPath?: string, local = false): string {
-  const cfgPath = configPath ?? CONFIG_PATH;
+  if (opts.local) {
+    setLocalCliPath(resolve(__dirname, "cli.js"));
+  } else {
+    setLocalCliPath(null);
+  }
 
-  const localCliPath = resolve(__dirname, "cli.js");
+  const localCliPath = detectLocalCliPath();
+  console.log(generateConfigBlock(clientId, configPath, localCliPath));
 
-  const claudeCommand = local ? "node" : "npx";
-  const claudeArgs = local ? [localCliPath, "serve"] : ["-y", "@dwgintel/loop", "serve"];
-
-  const opencodeCommand = local ? ["node", localCliPath, "serve"] : ["npx", "-y", "@dwgintel/loop", "serve"];
-
-  switch (client.toLowerCase()) {
-    case "claude":
-    case "claude-desktop":
-      return JSON.stringify({
-        mcpServers: {
-          "dwg-loop": {
-            command: claudeCommand,
-            args: claudeArgs,
-            env: { DWG_LOOP_CONFIG: cfgPath },
-          },
-        },
-      }, null, 2);
-
-    case "opencode":
-      return JSON.stringify({
-        mcp: {
-          "dwg-loop": {
-            type: "local",
-            command: opencodeCommand,
-            enabled: true,
-            environment: { DWG_LOOP_CONFIG: cfgPath },
-          },
-        },
-      }, null, 2);
-
-    case "cursor":
-      return JSON.stringify({
-        mcpServers: {
-          "dwg-loop": {
-            command: claudeCommand,
-            args: claudeArgs,
-            env: { DWG_LOOP_CONFIG: cfgPath },
-          },
-        },
-      }, null, 2);
-
-    default:
-      return `Unknown client: ${client}. Supported: claude, opencode, cursor`;
+  const targetFile = getConfigFilePath(clientId, scope);
+  if (targetFile) {
+    console.log(`\n  Target file: ${targetFile}`);
   }
 }
 

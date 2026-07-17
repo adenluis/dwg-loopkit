@@ -14,7 +14,7 @@
 ### Prerequisites
 
 - [Node.js](https://nodejs.org) v20 or later
-- A local AI client that supports MCP (Claude Desktop, opencode, Cursor, etc.)
+- A local AI client that supports MCP (see supported clients below)
 - A DWG INTEL membership with an MCP token
 
 ### Install and set up
@@ -26,16 +26,23 @@ npx -y @dwgintel/loop init
 This will:
 1. Ask for your vault folder path (or create one)
 2. Ask for your DWG MCP token
-3. Seed the vault with folder structure and rule files
-4. Save config to `~/.dwg-loop/config.json`
-5. Print the MCP config to paste into your AI client
+3. Ask which AI client you use (interactive menu)
+4. Ask whether to install globally or for this project
+5. Seed the vault with folder structure and rule files
+6. Auto-write the MCP config into your AI client's config file (or print it if auto-write isn't available)
 
-### Connect your AI
+### Supported AI clients
 
-Paste the generated config into:
-- **Claude Desktop:** `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows)
-- **opencode:** `~/.config/opencode/opencode.json`
-- **Cursor:** Settings > MCP
+| Client | Auto-write | Scope | Notes |
+|---|---|---|---|
+| **opencode** | Yes (file merge) | Global / project | Merges into `opencode.json` or `opencode.jsonc` |
+| **Claude Desktop** | Yes (file merge) | Single location | Writes to `claude_desktop_config.json` |
+| **Claude Code CLI** | Yes (via `claude mcp add`) | User / project | Uses Claude Code's CLI to add the server |
+| **Cursor** | Yes (file merge) | Global / project | Writes to `.cursor/mcp.json` |
+| **Codex CLI** | Yes (via `codex mcp add`) | Global / project | Uses Codex CLI to add the server |
+| **Other** | No (prints config) | — | Prints config block with guidance |
+
+If auto-write fails (e.g., CLI not on PATH), it falls back to printing the config with the exact file path to paste it into.
 
 Restart your AI client. On first connection, the AI will greet you and offer to run the onboarding interview.
 
@@ -51,14 +58,15 @@ Checks: config, vault access, seed, token, DWG connectivity.
 
 | Command | Purpose |
 |---|---|
-| `dwg-loop init` | First-time setup (interactive or `--vault`, `--token` flags) |
+| `dwg-loop init` | First-time setup — interactive client menu + auto-write |
+| `dwg-loop init --client opencode --scope project --yes` | Non-interactive setup for opencode, project scope |
 | `dwg-loop serve` | Start MCP server (stdio) |
 | `dwg-loop doctor` | Health check: config, vault, seed, token, DWG connectivity |
 | `dwg-loop seed` | Apply vault seed (skips existing files) |
 | `dwg-loop seed --force` | Overwrite existing contract files (DWG-CONTEXT.md, etc.) |
 | `dwg-loop seed --upgrade` | Refresh `.dwg/` rules + schemas only, no touch on personal notes |
 | `dwg-loop config [key] [value]` | Read/set config |
-| `dwg-loop emit-config <client>` | Print MCP config JSON (claude, opencode, cursor) |
+| `dwg-loop emit-config <client> --scope <global|project>` | Print MCP config for any client (opencode, claude, claude-code, cursor, codex, other) |
 | `dwg-loop version` | Print version |
 
 ## In-session commands

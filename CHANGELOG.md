@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-16
+
+### Added
+- Auto-write MCP config into AI client config files during `init`
+- Interactive client menu: opencode, Claude Desktop, Claude Code CLI, Cursor, Codex CLI, Other
+- `--scope <global|project>` flag for global vs project-scoped config (where supported)
+- Claude Code CLI integration: shells out to `claude mcp add` for auto-write
+- Codex CLI integration: shells out to `codex mcp add` for auto-write
+- JSONC comment-aware config parsing for opencode (comments stripped on merge with warning)
+- Generic config block + guidance for unsupported clients (Other)
+- `emit-config` command supports all 6 clients with `--scope` flag
+- Per-client config formats: JSON (Claude Desktop, Claude Code, Cursor), JSON/JSONC (opencode), TOML (Codex)
+- Config file path detection per client per platform (Windows, macOS, Linux)
+
+### Fixed
+- Seed directory not found when installed via npx (seed/ now ships in package, applySeed checks dist/seed/ fallback)
+
 ## [0.1.1] - 2026-07-16
 
 ### Fixed

@@ -39,10 +39,10 @@ node dist/cli.js init
 This will:
 1. Ask for your vault folder path (or create one)
 2. Ask for your DWG MCP token
-3. Ask which AI client you use (claude / opencode / cursor)
-4. Seed the vault with folder structure and rule files
-5. Save config to `~/.dwg-loop/config.json`
-6. Print the MCP config to paste into your AI client
+3. Show an interactive menu to pick your AI client (opencode, Claude Desktop, Claude Code, Cursor, Codex CLI, Other)
+4. Ask whether to install globally or for this project (where supported)
+5. Seed the vault with folder structure and rule files
+6. Auto-write the MCP config into your AI client's config file (or print it if auto-write isn't available)
 
 Use `--local` so the generated config points at this local build instead of npx:
 
@@ -53,28 +53,31 @@ node dist/cli.js init --local --client opencode
 Or run fully non-interactive:
 
 ```bash
-node dist/cli.js init --local --client opencode --vault ~/dwg-vault --token dwg_xxx --yes
+node dist/cli.js init --local --client opencode --scope project --vault ~/dwg-vault --token dwg_xxx --yes
 ```
 
 ### Step 3 - Connect your AI
 
-Paste the generated config into your AI client's MCP settings. Supported clients:
+The init command auto-writes the MCP config into your AI client's config file where possible. Supported clients:
 
-| Client | --client flag | Status | Config location | Notes |
+| Client | `--client` flag | Auto-write | Scope | Config location |
 |---|---|---|---|---|
-| **opencode** | `--client opencode` | Tested and working | `opencode.json` or `opencode.jsonc` in your project or `~/.config/opencode/` | Primary test client. Uses `type: local` format. |
-| **Claude Desktop** | `--client claude` | Config generated, untested | macOS: `~/Library/Application Support/Claude/claude_desktop_config.json` Windows: `%APPDATA%\Claude\claude_desktop_config.json` | Likely to work well - Claude typically respects MCP instructions. |
-| **Cursor** | `--client cursor` | Config generated, untested | Settings > MCP | Code editor first; the conversational workflow may feel less natural. |
+| **opencode** | `opencode` | File merge | Global / project | `opencode.json` or `opencode.jsonc` in project or `~/.config/opencode/` |
+| **Claude Desktop** | `claude` | File merge | Single location | macOS: `~/Library/Application Support/Claude/` Windows: `%APPDATA%\Claude\` |
+| **Claude Code CLI** | `claude-code` | `claude mcp add` | User / project | `~/.claude.json` or `.mcp.json` in project |
+| **Cursor** | `cursor` | File merge | Global / project | `~/.cursor/mcp.json` or `.cursor/mcp.json` |
+| **Codex CLI** | `codex` | `codex mcp add` | Global / project | `~/.codex/config.toml` or `.codex/config.toml` |
+| **Other** | `other` | Print only | — | Prints generic config block with guidance |
 
 Example with a specific client:
 
 ```bash
-node dist/cli.js init --local --client claude
-node dist/cli.js init --local --client opencode
-node dist/cli.js init --local --client cursor
+node dist/cli.js init --local --client opencode --scope project
+node dist/cli.js init --local --client claude-code --scope user
+node dist/cli.js init --local --client cursor --scope global
 ```
 
-Other MCP-compatible clients (Claude Code CLI, Cline, Roo Code, Continue.dev) use the same stdio transport and should technically work, but config generation and playbook behaviour are untested.
+If auto-write fails (e.g. CLI not on PATH), the config is printed with the exact file path for manual paste. Other MCP-compatible clients (Cline, Roo Code, Continue.dev) use the same stdio transport and should technically work with the "Other" option.
 
 Restart your AI client. Say **DWG start setup** to begin the onboarding interview.
 
@@ -119,14 +122,15 @@ No clone or build needed. The MCP config will use `npx -y @dwgintel/loop serve` 
 
 | Command | Purpose |
 |---|---|
-| `node dist/cli.js init` | First-time setup (interactive or `--vault`, `--token`, `--client`, `--yes`, `--local` flags) |
+| `node dist/cli.js init` | First-time setup — interactive client menu + auto-write |
+| `node dist/cli.js init --client <id> --scope <global|project> --yes` | Non-interactive setup |
 | `node dist/cli.js serve` | Start MCP server (stdio) |
 | `node dist/cli.js doctor` | Health check: config, vault, seed, token, DWG connectivity |
 | `node dist/cli.js seed` | Apply vault seed (skips existing files) |
 | `node dist/cli.js seed --force` | Overwrite existing contract files (DWG-CONTEXT.md, etc.) |
 | `node dist/cli.js seed --upgrade` | Refresh `.dwg/` rules + schemas only, no touch on personal notes |
 | `node dist/cli.js config [key] [value]` | Read/set config |
-| `node dist/cli.js emit-config <client> --local` | Print MCP config JSON (claude, opencode, cursor) |
+| `node dist/cli.js emit-config <client> --scope <global|project> --local` | Print MCP config for any client (opencode, claude, claude-code, cursor, codex, other) |
 | `node dist/cli.js version` | Print version |
 
 ## In-session commands
