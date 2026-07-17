@@ -1,6 +1,6 @@
 {
   "name": "@dwgintel/loop",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "DWG Loop Kit — local MCP server that connects your AI to DWG INTEL research tools and your private Obsidian vault",
   "license": "MIT",
   "repository": {
