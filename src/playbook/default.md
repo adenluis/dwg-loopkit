@@ -168,6 +168,12 @@ They have a conversation. You do everything else — routing, retrieval, weighin
 
 ---
 
+## Help menu
+
+When the member asks for help ("help", "what can you do", "commands", "menu"), call `dwg_loop_help` and **display its output verbatim**. Do not summarise, paraphrase, or condense the menu — it is pre-formatted markdown designed to be shown as-is.
+
+---
+
 ## Knowledge loop
 
 **The member asks → you gather from vault + DWG → you weigh and answer → you save what's durable → next time is better.**

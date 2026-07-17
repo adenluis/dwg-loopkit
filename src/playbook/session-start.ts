@@ -52,7 +52,8 @@ export function createSessionStartTool(vaultPath: string, dwgStateGetter?: DwgSt
         "DWG Loop Kit — Show the member a plain-English menu of everything they can do: " +
         "natural language commands, trigger phrases, and available capabilities. " +
         "Call this when the member asks 'help', 'what can you do', 'commands', 'menu', " +
-        "'how do I use this', or seems lost.",
+        "'how do I use this', or seems lost. " +
+        "The output is pre-formatted markdown — display it verbatim to the member. Do NOT summarise, paraphrase, or condense it.",
       inputSchema: {
         type: "object",
         properties: {},
