@@ -46,6 +46,22 @@ If auto-write fails (e.g., CLI not on PATH), it falls back to printing the confi
 
 Restart your AI client. On first connection, the AI will greet you and offer to run the onboarding interview.
 
+### Non-interactive setup
+
+Skip the prompts by providing flags directly:
+
+```bash
+npx -y @dwgintel/loop init --vault ~/dwg-vault --token dwg_xxx --client opencode --scope project --yes
+```
+
+| Flag | Purpose |
+|---|---|
+| `--vault <path>` | Vault folder path (created if missing) |
+| `--token <token>` | DWG MCP token (starts with `dwg_...`) |
+| `--client <name>` | AI client: `opencode`, `claude`, `claude-code`, `cursor`, `codex`, `other` |
+| `--scope <scope>` | `global` (default) or `project` |
+| `--yes` | Skip all prompts, use defaults or provided flags |
+
 ### Verify setup
 
 ```bash
