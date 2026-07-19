@@ -4,9 +4,10 @@ import { Command } from "commander";
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from "fs";
 import { resolve, join, dirname } from "path";
 import { fileURLToPath } from "url";
-import { homedir } from "os";
+import { homedir, platform } from "os";
 import { createInterface } from "readline/promises";
 import { stdin as input, stdout as output } from "process";
+import { execSync } from "child_process";
 import { DEFAULT_CONFIG, DEFAULT_DWG_MCP_URL } from "./config.js";
 import type { LoopConfig } from "./config.js";
 import { serve } from "./serve.js";
@@ -16,11 +17,20 @@ import {
   generateConfigBlock,
   autoWriteConfig,
   getConfigFilePath,
-  detectLocalCliPath,
-  setLocalCliPath,
+  detectInstalledClients,
+  resolveServerCommand,
   getClientHelpText,
 } from "./clients.js";
 import type { ClientId, Scope } from "./clients.js";
+import {
+  getPackageVersion,
+  getPinnedSpec,
+  getLatestVersion,
+  isNewerVersion,
+  getThisCliPath,
+  getUserCommandPrefix,
+} from "./version.js";
+import { checkTokenWithDwg } from "./token-check.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -35,6 +45,23 @@ function expandTilde(p: string): string {
   return p;
 }
 
+function checkNodeVersion(): void {
+  const major = parseInt(process.versions.node.split(".")[0], 10);
+  if (major >= 20) return;
+  const os = platform();
+  console.error(`\n  DWG Loop Kit needs Node.js 20 or later — you're running ${process.version}.\n`);
+  if (os === "win32") {
+    console.error("  Get the LTS installer from https://nodejs.org (choose Windows Installer).\n");
+  } else if (os === "darwin") {
+    console.error("  Update from https://nodejs.org or run: brew install node\n");
+  } else {
+    console.error("  Update via your package manager or https://nodejs.org\n");
+  }
+  process.exit(1);
+}
+
+checkNodeVersion();
+
 const program = new Command();
 
 program
@@ -44,7 +71,7 @@ program
 
 program
   .command("init")
-  .description("Set up Loop Kit: choose vault, enter token, seed structure, print AI config")
+  .description("Set up Loop Kit: choose vault, enter token, seed structure, write AI config")
   .option("--vault <path>", "path to vault folder (skip prompt)")
   .option("--token <token>", "DWG MCP token (skip prompt)")
   .option("--mcp-url <url>", "DWG MCP server URL", DEFAULT_DWG_MCP_URL)
@@ -52,7 +79,8 @@ program
   .option("--client <name>", "AI client: opencode | claude | claude-code | cursor | codex | other")
   .option("--scope <scope>", "config scope: global | project (default: global)")
   .option("--yes", "skip all prompts, use defaults or provided flags")
-  .option("--local", "generate MCP config pointing at this local build instead of npx")
+  .option("--local", "(deprecated — configs now always point at the running build)")
+  .option("--repoint", "re-point the recorded AI client at this version and refresh rules (no prompts)")
   .action(init);
 
 program
@@ -66,6 +94,18 @@ program
   .description("Check config, vault access, playbook, DWG connectivity")
   .option("--config <path>", "path to config.json")
   .action(doctor);
+
+program
+  .command("update")
+  .description("Update Loop Kit to the latest version and refresh vault rules")
+  .action(updateCmd);
+
+program
+  .command("version")
+  .description("Print version")
+  .action(() => {
+    console.log(getPackageVersion());
+  });
 
 program
   .command("seed")
@@ -89,7 +129,7 @@ program
   .argument("<client>", "client: opencode | claude | claude-code | cursor | codex | other")
   .option("--config <path>", "path to config.json")
   .option("--scope <scope>", "config scope: global | project (default: global)")
-  .option("--local", "generate MCP config pointing at this local build instead of npx")
+  .option("--local", "(deprecated — configs now always point at the running build)")
   .action(emitConfigAction);
 
 program.parse();
@@ -103,21 +143,36 @@ async function init(opts: {
   scope?: string;
   yes?: boolean;
   local?: boolean;
+  repoint?: boolean;
 }): Promise<void> {
-  const rl = createInterface({ input, output });
+  // Repoint mode: driven by `update` — no prompts, reuse the existing config.
+  if (opts.repoint) {
+    await repointExisting();
+    return;
+  }
+
+  // terminal auto-detects: TTY → masked input works via _writeToOutput;
+  // piped stdin → plain line mode, so scripted input isn't garbled.
+  // Buffered questioner: queues input lines so pasted/piped multi-line
+  // input is never dropped between sequential questions (rl.question loses
+  // lines that arrive while no question is pending). askMasked echoes "*"
+  // per character on TTYs for token entry.
+  const q = createQuestioner();
   const nonInteractive = opts.yes === true;
 
   console.log("\n  DWG Loop Kit — Setup\n");
 
-  // Vault path
+  // ── Vault path ──────────────────────────────────────────────────────────
+  const defaultVault = join(homedir(), "dwg-vault");
   let vaultPath: string;
   if (opts.vault) {
     vaultPath = opts.vault;
   } else if (nonInteractive) {
-    vaultPath = resolve(homedir(), "dwg-vault");
+    vaultPath = defaultVault;
     console.log(`  Using default vault path: ${vaultPath}`);
   } else {
-    vaultPath = (await rl.question("  Path to your vault folder (e.g. ~/dwg-vault): ")).trim();
+    const answer = (await q.ask(`  Path to your vault folder [${defaultVault}]: `)).trim();
+    vaultPath = answer || defaultVault;
   }
   if (!vaultPath) {
     console.error("  Vault path is required.");
@@ -132,8 +187,9 @@ async function init(opts: {
       mkdirSync(resolvedVault, { recursive: true });
       console.log(`  Created vault: ${resolvedVault}`);
     } else {
-      const create = await rl.question(`  "${resolvedVault}" doesn't exist. Create it? (y/n): `);
-      if (create.trim().toLowerCase().startsWith("y")) {
+      const create = await q.ask(`  "${resolvedVault}" doesn't exist. Create it? (Y/n): `);
+      const a = create.trim().toLowerCase();
+      if (a === "" || a.startsWith("y")) {
         mkdirSync(resolvedVault, { recursive: true });
       } else {
         console.error("  Cannot continue without a vault path.");
@@ -142,30 +198,41 @@ async function init(opts: {
     }
   }
 
-  // Token
-  let token: string;
-  if (opts.token) {
-    token = opts.token;
-  } else if (opts.tokenEnv) {
-    token = "";
+  // ── Token ───────────────────────────────────────────────────────────────
+  let token = "";
+  if (opts.tokenEnv) {
+    // Token lives in an env var — nothing to store or validate here.
+    console.log(`  Token will be read from env var ${opts.tokenEnv} at runtime.`);
+  } else if (opts.token) {
+    token = opts.token.trim();
+    const check = await checkTokenWithDwg(opts.mcpUrl, token);
+    if (check.status === "ok") {
+      console.log("  [OK] Token verified with DWG.");
+    } else if (check.status === "rejected") {
+      if (nonInteractive) {
+        console.error(`  [FAIL] Token rejected by DWG (${check.httpStatus}). Check the token and try again.`);
+        process.exit(3);
+      }
+      console.log(`  [!] That token was rejected by DWG (${check.httpStatus}).`);
+      token = await promptForToken(q, opts.mcpUrl);
+    } else {
+      console.log(`  [!] Couldn't verify the token (${check.reason}). Saved anyway — run the doctor later to re-check.`);
+    }
   } else if (nonInteractive) {
     console.error("  Token is required. Provide --token or --token-env.");
     process.exit(1);
   } else {
-    token = (await rl.question("  DWG MCP token (dwg_...): ")).trim();
-  }
-  if (!token && !opts.tokenEnv) {
-    console.error("  Token is required.");
-    process.exit(1);
+    token = await promptForToken(q, opts.mcpUrl);
   }
 
-  // Client selection
+  // ── Client selection ────────────────────────────────────────────────────
   let clientId: ClientId;
   if (opts.client) {
     clientId = resolveClientId(opts.client);
   } else if (nonInteractive) {
     clientId = "other";
   } else {
+    const detected = new Set(detectInstalledClients());
     console.log("\n  Which AI client do you use?\n");
     CLIENTS.forEach((c, i) => {
       const num = i + 1;
@@ -175,40 +242,41 @@ async function init(opts: {
           : c.autoWriteStrategy === "file"
             ? "(auto-configure)"
             : "(print config for manual setup)";
-      console.log(`    ${num}. ${c.label} ${autoTag}`);
+      const seen = detected.has(c.id) ? "  <- detected on this machine" : "";
+      console.log(`    ${num}. ${c.label} ${autoTag}${seen}`);
     });
     console.log();
-    const answer = await rl.question(`  Enter choice [1]: `);
-    const idx = parseInt(answer.trim(), 10) || 1;
+    const firstDetected = CLIENTS.findIndex((c) => detected.has(c.id));
+    const defaultChoice = firstDetected >= 0 ? firstDetected + 1 : 1;
+    const answer = await q.ask(`  Enter choice [${defaultChoice}]: `);
+    const idx = parseInt(answer.trim(), 10) || defaultChoice;
     const clamped = Math.max(1, Math.min(idx, CLIENTS.length));
     clientId = CLIENTS[clamped - 1].id;
   }
 
-  // Scope selection
+  // ── Scope ───────────────────────────────────────────────────────────────
   let scope: Scope = "global";
   const clientDef = CLIENTS.find((c) => c.id === clientId)!;
   if (clientDef.hasScopeChoice) {
     if (opts.scope) {
       scope = opts.scope === "project" ? "project" : "global";
     } else if (!nonInteractive) {
-      const answer = await rl.question("\n  Install globally or for this project only? (global/project) [global]: ");
-      if (answer.trim().toLowerCase().startsWith("p")) {
+      const answer = await q.ask(
+        "\n  Use DWG Loop Kit in all your projects, or just this folder? (all/folder) [all]: "
+      );
+      const a = answer.trim().toLowerCase();
+      if (a.startsWith("f") || a.startsWith("p")) {
         scope = "project";
       }
     }
   }
 
-  // Local path detection
-  if (opts.local) {
-    setLocalCliPath(resolve(__dirname, "cli.js"));
-  } else {
-    setLocalCliPath(null);
-  }
+  q.close();
 
-  await rl.close();
-
+  // ── Write config + token, seed vault ────────────────────────────────────
   mkdirSync(CONFIG_DIR, { recursive: true });
 
+  const server = resolveServerCommand();
   const config: LoopConfig = {
     ...DEFAULT_CONFIG,
     dwg: {
@@ -220,6 +288,12 @@ async function init(opts: {
       path: resolvedVault,
       toolPrefix: "vault_",
     },
+    install: {
+      client: clientId,
+      scope,
+      server: server.args[0] ?? getThisCliPath(),
+      recordedAt: new Date().toISOString(),
+    },
   };
 
   writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
@@ -228,25 +302,24 @@ async function init(opts: {
     writeFileSync(join(CONFIG_DIR, "token"), token, { mode: 0o600 });
   }
 
-  await applySeed(resolvedVault, true, false);
+  // Seed skips existing contract files — re-running init never wipes the
+  // member's DWG-CONTEXT.md, INDEX.md or ACTIVITY-LOG.md.
+  await applySeed(resolvedVault, false, false);
 
   console.log("\n  Vault seeded. Config saved to:\n");
   console.log(`    ${CONFIG_PATH}`);
 
-  // Auto-write or print config
-  const localCliPath = detectLocalCliPath();
-
+  // ── Auto-write or print client config ───────────────────────────────────
   console.log(`\n  Configuring ${clientDef.label} (${scope} scope)...\n`);
 
-  const result = autoWriteConfig(clientId, CONFIG_PATH, scope, localCliPath);
+  const result = autoWriteConfig(clientId, CONFIG_PATH, scope, server);
 
   if (result.success) {
     console.log(`  [OK] ${result.message}`);
-    console.log("\n  Restart your AI client. After connecting, say \"DWG help\" to see all commands.\n");
   } else {
     console.log(`  [!] ${result.message}`);
     console.log(`\n  Your ${clientDef.label} MCP config:\n`);
-    console.log(generateConfigBlock(clientId, CONFIG_PATH, localCliPath));
+    console.log(generateConfigBlock(clientId, CONFIG_PATH, server));
 
     if (result.configPath) {
       console.log(`\n  Paste this into: ${result.configPath}\n`);
@@ -257,9 +330,216 @@ async function init(opts: {
     if (clientId === "other") {
       console.log(`  ${getClientHelpText(clientId)}\n`);
     }
-
-    console.log("  After connecting, say \"DWG help\" to see all commands.\n");
   }
+
+  // ── Summary ─────────────────────────────────────────────────────────────
+  const restartTarget = clientId === "other" ? "your AI client" : clientDef.label;
+  console.log("\n  ------------------------------------------------");
+  console.log("  Setup complete.\n");
+  console.log("  Next steps:");
+  console.log(`    1. Restart ${restartTarget} completely, then start a new conversation.`);
+  console.log(`    2. Say "DWG help" to see what you can do.\n`);
+  console.log("  If anything doesn't work, run:");
+  console.log(`    ${getUserCommandPrefix()} doctor\n`);
+  console.log(`  Your vault:  ${resolvedVault}`);
+  console.log(`  Your config: ${CONFIG_PATH}\n`);
+}
+
+interface Questioner {
+  ask(prompt: string): Promise<string>;
+  askMasked(prompt: string): Promise<string>;
+  close(): void;
+}
+
+/**
+ * Buffered line questioner. Lines that arrive while no question is pending
+ * (pasted or piped multi-line input) are queued instead of dropped, which is
+ * the failure mode of sequential rl.question() calls. Masking echoes "*" per
+ * character; it only takes effect on TTYs, where readline echoes input.
+ */
+function createQuestioner(): Questioner {
+  const rl = createInterface({ input, output });
+  const buffered: string[] = [];
+  const waiters: Array<(line: string) => void> = [];
+
+  rl.on("line", (line) => {
+    const waiter = waiters.shift();
+    if (waiter) waiter(line);
+    else buffered.push(line);
+  });
+  rl.on("close", () => {
+    // EOF with a pending question: answer it blank so defaults apply.
+    for (const waiter of waiters.splice(0)) waiter("");
+  });
+
+  const mutable = rl as unknown as { _writeToOutput: (s: string) => void };
+  const originalWrite = mutable._writeToOutput;
+  let mask = false;
+  mutable._writeToOutput = (chunk: string): void => {
+    if (mask && chunk !== "\n" && chunk !== "\r\n") {
+      originalWrite.call(rl, "*");
+    } else {
+      originalWrite.call(rl, chunk);
+    }
+  };
+
+  const take = (): Promise<string> => {
+    if (buffered.length) return Promise.resolve(buffered.shift()!);
+    return new Promise((resolvePromise) => waiters.push(resolvePromise));
+  };
+
+  return {
+    async ask(prompt: string): Promise<string> {
+      process.stdout.write(prompt);
+      return (await take()).trim();
+    },
+    async askMasked(prompt: string): Promise<string> {
+      process.stdout.write(prompt);
+      mask = true;
+      try {
+        return (await take()).trim();
+      } finally {
+        mask = false;
+      }
+    },
+    close(): void {
+      rl.close();
+    },
+  };
+}
+
+/**
+ * Interactive token prompt: masked input, dwg_ prefix sanity check, and a
+ * live validation call against the DWG server with retry.
+ */
+async function promptForToken(q: Questioner, mcpUrl: string): Promise<string> {
+  for (let attempt = 1; ; attempt++) {
+    const token = await q.askMasked("  DWG MCP token (dwg_...): ");
+    if (!token) {
+      console.log("  Token is required — copy it from your DWG INTEL account (it starts with dwg_).");
+      continue;
+    }
+    if (!token.startsWith("dwg_")) {
+      const use = await q.ask("  That doesn't look like a DWG token (they start with \"dwg_\"). Use it anyway? (y/N): ");
+      if (!use.trim().toLowerCase().startsWith("y")) continue;
+    }
+    process.stdout.write("  Checking token with DWG... ");
+    const check = await checkTokenWithDwg(mcpUrl, token);
+    if (check.status === "ok") {
+      console.log("verified.");
+      return token;
+    }
+    if (check.status === "rejected") {
+      console.log(`rejected (${check.httpStatus}).`);
+      if (attempt >= 3) {
+        const keep = await q.ask("  Keep this token anyway? (y/N): ");
+        if (keep.trim().toLowerCase().startsWith("y")) return token;
+        console.error("  Cannot continue without a valid token.");
+        process.exit(3);
+      }
+      console.log("  Check you copied the whole token and try again.");
+      continue;
+    }
+    console.log(`couldn't verify (${check.reason}).`);
+    console.log("  Saved anyway — the vault works offline; run the doctor later to re-check.");
+    return token;
+  }
+}
+
+/**
+ * Re-point the recorded AI client's MCP config at this exact installed
+ * version and refresh the vault's .dwg/ rules. Idempotent — also repairs
+ * configs whose recorded server file was removed (e.g. npm cache cleared).
+ */
+async function repointExisting(): Promise<void> {
+  console.log("\n  DWG Loop Kit — Repoint\n");
+
+  if (!existsSync(CONFIG_PATH)) {
+    console.error("  No existing config found. Run `init` first.");
+    process.exit(1);
+  }
+  const config = loadConfigSafe(CONFIG_PATH);
+  const server = resolveServerCommand();
+  console.log(`  Version: ${getPackageVersion()}`);
+
+  const install = config.install;
+  if (!install?.client) {
+    console.log("  [!] This setup predates install tracking — no recorded AI client to repoint.");
+    console.log(`      Run \`${getUserCommandPrefix()} init\` once to record your client.`);
+  } else {
+    const clientId = resolveClientId(install.client);
+    const scope: Scope = install.scope === "project" ? "project" : "global";
+    const clientDef = CLIENTS.find((c) => c.id === clientId)!;
+    console.log(`  Re-pointing ${clientDef.label} (${scope} scope) at this version...`);
+    const result = autoWriteConfig(clientId, CONFIG_PATH, scope, server);
+    if (result.success) {
+      console.log(`  [OK] ${result.message}`);
+    } else {
+      console.log(`  [!] ${result.message}`);
+      console.log(`\n  Your ${clientDef.label} MCP config:\n`);
+      console.log(generateConfigBlock(clientId, CONFIG_PATH, server));
+    }
+    config.install = {
+      client: clientId,
+      scope,
+      server: server.args[0] ?? getThisCliPath(),
+      recordedAt: new Date().toISOString(),
+    };
+    writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+  }
+
+  console.log("\n  Refreshing vault rules...");
+  await applySeed(config.vault.path, false, true);
+  console.log("\n  Done. Restart your AI client to pick up the change.\n");
+}
+
+let _isGlobalInstall: boolean | undefined;
+function isGlobalInstall(): boolean {
+  if (_isGlobalInstall !== undefined) return _isGlobalInstall;
+  try {
+    const root = execSync("npm root -g", { stdio: "pipe", timeout: 8000 }).toString().trim();
+    _isGlobalInstall = root.length > 0 && getThisCliPath().toLowerCase().startsWith(root.toLowerCase());
+  } catch {
+    _isGlobalInstall = false;
+  }
+  return _isGlobalInstall;
+}
+
+async function updateCmd(): Promise<void> {
+  console.log("\n  DWG Loop Kit — Update\n");
+  const current = getPackageVersion();
+  console.log(`  Installed version: ${current}`);
+  process.stdout.write("  Checking npm for the latest version... ");
+  const latest = await getLatestVersion({ forceRefresh: true, timeoutMs: 8000 });
+  if (!latest) {
+    console.log("failed.");
+    console.error("\n  Couldn't reach the npm registry. Check your internet connection and try again.\n");
+    process.exit(1);
+  }
+  console.log(latest);
+
+  if (isNewerVersion(latest, current)) {
+    console.log(`\n  Updating to ${latest}...`);
+    const spec = getPinnedSpec(latest);
+    try {
+      if (isGlobalInstall()) {
+        execSync(`npm install -g ${spec}`, { stdio: "inherit" });
+        // Hand off to the new version so it finishes the job with its own code.
+        execSync("dwg-loop update", { stdio: "inherit" });
+      } else {
+        // npx downloads the new version; its `update` sees it's latest and repoints.
+        execSync(`npx -y ${spec} update`, { stdio: "inherit" });
+      }
+      return;
+    } catch (e) {
+      console.error(`\n  Update failed: ${e instanceof Error ? e.message : String(e)}`);
+      console.error(`  You can finish it manually with: npx -y ${spec} init --repoint\n`);
+      process.exit(1);
+    }
+  }
+
+  console.log("  You're on the latest version.");
+  await repointExisting();
 }
 
 async function serveCmd(opts: { config?: string }): Promise<void> {
@@ -272,6 +552,14 @@ async function doctor(opts: { config?: string }): Promise<void> {
   let exitCode = 0;
 
   console.log("\n  DWG Loop Kit — Doctor\n");
+
+  const current = getPackageVersion();
+  let versionLine = `  Loop Kit version: ${current}`;
+  const latest = await getLatestVersion();
+  if (latest && isNewerVersion(latest, current)) {
+    versionLine += `  ->  update available: ${latest} (run \`${getUserCommandPrefix()} update\`)`;
+  }
+  console.log(versionLine);
 
   try {
     const config = loadConfigSafe(configPath);
@@ -295,6 +583,19 @@ async function doctor(opts: { config?: string }): Promise<void> {
     } else {
       console.log("  [FAIL] Seed assets missing — run `npm run build` to rebuild");
       exitCode = 2;
+    }
+
+    // Check the server file recorded in the AI client's MCP config
+    if (config.install?.server) {
+      if (existsSync(config.install.server)) {
+        console.log("  [OK] Recorded server file present");
+      } else {
+        console.log("  [FAIL] Recorded server file missing — the npm cache may have been cleared.");
+        console.log(`         Run \`${getUserCommandPrefix()} update\` to repair.`);
+        exitCode = 2;
+      }
+    } else {
+      console.log("  [INFO] No install metadata (setup predates 0.3.0) — re-run init to record your client.");
     }
 
     if (existsSync(config.vault.path)) {
@@ -323,36 +624,24 @@ async function doctor(opts: { config?: string }): Promise<void> {
       console.log("  [WARN] DWG-CONTEXT.md missing — run `dwg-loop seed`");
     }
 
+    let token: string | null = null;
     try {
-      const token = getTokenSafe(config);
+      token = getTokenSafe(config);
       console.log("  [OK] Token configured");
     } catch {
       console.log("  [FAIL] Token not available");
       exitCode = 3;
     }
 
-    if (config.dwg.mcpUrl) {
-      try {
-        const response = await fetch(config.dwg.mcpUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Accept": "application/json, text/event-stream",
-            "Authorization": `Bearer ${getTokenSafe(config)}`,
-          },
-          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
-          signal: AbortSignal.timeout(10000),
-        });
-        if (response.ok) {
-          console.log("  [OK] DWG server reachable");
-        } else if (response.status === 401) {
-          console.log("  [FAIL] DWG server reachable but token invalid (401)");
-          exitCode = 3;
-        } else {
-          console.log(`  [WARN] DWG server returned ${response.status}`);
-        }
-      } catch {
-        console.log("  [WARN] Could not reach DWG server (vault still works locally)");
+    if (config.dwg.mcpUrl && token) {
+      const check = await checkTokenWithDwg(config.dwg.mcpUrl, token, 10000);
+      if (check.status === "ok") {
+        console.log("  [OK] DWG server reachable, token accepted");
+      } else if (check.status === "rejected") {
+        console.log(`  [FAIL] DWG server reachable but token rejected (${check.httpStatus})`);
+        exitCode = 3;
+      } else {
+        console.log(`  [WARN] Could not verify with DWG server (${check.reason}) — vault still works locally`);
       }
     }
   } catch (error) {
@@ -426,14 +715,8 @@ async function emitConfigAction(
   const clientId = resolveClientId(client);
   const scope: Scope = opts.scope === "project" ? "project" : "global";
 
-  if (opts.local) {
-    setLocalCliPath(resolve(__dirname, "cli.js"));
-  } else {
-    setLocalCliPath(null);
-  }
-
-  const localCliPath = detectLocalCliPath();
-  console.log(generateConfigBlock(clientId, configPath, localCliPath));
+  const server = resolveServerCommand();
+  console.log(generateConfigBlock(clientId, configPath, server));
 
   const targetFile = getConfigFilePath(clientId, scope);
   if (targetFile) {
@@ -537,15 +820,4 @@ function getTokenSafe(config: LoopConfig): string {
     return readFileSync(config.dwg.tokenFile, "utf-8").trim();
   }
   throw new Error("No token configured");
-}
-
-function getPackageVersion(): string {
-  try {
-    const pkgPath = join(__dirname, "..", "package.json");
-    if (existsSync(pkgPath)) {
-      return JSON.parse(readFileSync(pkgPath, "utf-8")).version ?? "0.0.0";
-    }
-  } catch {
-  }
-  return "0.0.0";
 }

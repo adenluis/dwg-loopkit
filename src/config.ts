@@ -1,3 +1,14 @@
+export interface InstallInfo {
+  /** AI client id the MCP config was written for (see clients.ts) */
+  client: string;
+  /** Config scope used at init */
+  scope: "global" | "project";
+  /** Absolute path to the cli.js recorded in the AI client's MCP config */
+  server: string;
+  /** ISO timestamp of when the client config was last written */
+  recordedAt: string;
+}
+
 export interface LoopConfig {
   version: number;
   dwg: {
@@ -16,6 +27,8 @@ export interface LoopConfig {
   proxy: {
     timeoutMs: number;
   };
+  /** Present on configs written by init >= 0.3.0; used by `update`/`--repoint` */
+  install?: InstallInfo;
 }
 
 export const DEFAULT_CONFIG: Pick<LoopConfig, "version" | "playbook" | "proxy"> = {

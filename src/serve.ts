@@ -4,9 +4,6 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import { readFileSync, existsSync } from "fs";
-import { join, dirname } from "path";
-import { fileURLToPath } from "url";
 import type { LoopConfig } from "./config.js";
 import { loadConfig, getToken } from "./config-loader.js";
 import { loadPlaybook, buildInstructions } from "./playbook/load.js";
@@ -15,9 +12,7 @@ import { createDwgProxy } from "./proxy/dwg-client.js";
 import type { DwgProxyState } from "./proxy/dwg-client.js";
 import { createSessionStartTool } from "./playbook/session-start.js";
 import type { ToolDef, ToolHandler } from "./types.js";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+import { getPackageVersion, getUserCommandPrefix } from "./version.js";
 
 export async function createLoopServer(configPath?: string): Promise<void> {
   const config = loadConfig(configPath);
@@ -74,19 +69,7 @@ export async function serve(configPath?: string): Promise<void> {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     process.stderr.write(`DWG Loop Kit failed to start: ${message}\n`);
-    process.stderr.write(`Run \`dwg-loop doctor\` to diagnose.\n`);
+    process.stderr.write(`Run \`${getUserCommandPrefix()} doctor\` to diagnose.\n`);
     process.exit(1);
   }
-}
-
-function getPackageVersion(): string {
-  try {
-    const pkgPath = join(__dirname, "..", "package.json");
-    if (existsSync(pkgPath)) {
-      const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
-      return pkg.version ?? "0.0.0";
-    }
-  } catch {
-  }
-  return "0.0.0";
 }

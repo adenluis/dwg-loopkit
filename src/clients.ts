@@ -1,7 +1,12 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { resolve, join, dirname } from "path";
+import { fileURLToPath } from "url";
 import { homedir, platform } from "os";
 import { execSync } from "child_process";
+import { getPinnedSpec } from "./version.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 export type ClientId =
   | "opencode"
@@ -39,24 +44,85 @@ export function resolveClientId(input: string): ClientId {
   return "other";
 }
 
+/**
+ * The command an AI client should spawn to run the Loop Kit server.
+ *
+ * Primary form: the absolute path to the running Node binary plus the
+ * absolute path to this package's cli.js. GUI clients (Claude Desktop,
+ * Cursor) spawn MCP servers with a minimal environment where `npx` is often
+ * not on PATH — absolute paths sidestep that whole failure class, start
+ * faster (no npx resolution), and work offline.
+ *
+ * Fallback form (cli.js not found, e.g. running from source via tsx):
+ * pinned `npx` spec, so the version is still exact.
+ */
+export interface ServerCommand {
+  command: string;
+  args: string[];
+}
+
+export function resolveServerCommand(cliJsPath?: string): ServerCommand {
+  const candidate = cliJsPath ?? join(__dirname, "cli.js");
+  if (existsSync(candidate)) {
+    return { command: process.execPath, args: [candidate, "serve"] };
+  }
+  return { command: "npx", args: ["-y", getPinnedSpec(), "serve"] };
+}
+
+/**
+ * Detect which supported AI clients appear to be installed, by looking for
+ * their config files/directories. Pure filesystem probes — fast, no spawned
+ * processes. Used to pre-select the interactive menu; never restrictive.
+ */
+export function detectInstalledClients(cwd: string = process.cwd(), home: string = homedir()): ClientId[] {
+  const detected: ClientId[] = [];
+  const isMac = platform() === "darwin";
+  const isWin = platform() === "win32";
+
+  if (
+    existsSync(join(home, ".config", "opencode")) ||
+    existsSync(join(cwd, "opencode.json")) ||
+    existsSync(join(cwd, "opencode.jsonc"))
+  ) {
+    detected.push("opencode");
+  }
+
+  const claudeDir = isMac
+    ? join(home, "Library", "Application Support", "Claude")
+    : isWin
+      ? join(home, "AppData", "Roaming", "Claude")
+      : join(home, ".config", "Claude");
+  if (existsSync(claudeDir)) {
+    detected.push("claude");
+  }
+
+  if (existsSync(join(home, ".claude.json")) || existsSync(join(home, ".claude"))) {
+    detected.push("claude-code");
+  }
+
+  if (existsSync(join(home, ".cursor")) || existsSync(join(cwd, ".cursor"))) {
+    detected.push("cursor");
+  }
+
+  if (existsSync(join(home, ".codex")) || existsSync(join(cwd, ".codex"))) {
+    detected.push("codex");
+  }
+
+  return detected;
+}
+
 export function generateConfigBlock(
   client: ClientId,
   configPath: string,
-  localCliPath: string | null
+  server: ServerCommand = resolveServerCommand()
 ): string {
-  const command: string =
-    localCliPath ? "node" : "npx";
-  const args: string[] = localCliPath
-    ? [localCliPath, "serve"]
-    : ["-y", "@dwgintel/loop", "serve"];
-
   switch (client) {
     case "opencode":
       return JSON.stringify({
         mcp: {
           "dwg-loop": {
             type: "local",
-            command: localCliPath ? ["node", localCliPath, "serve"] : ["npx", "-y", "@dwgintel/loop", "serve"],
+            command: [server.command, ...server.args],
             enabled: true,
             environment: { DWG_LOOP_CONFIG: configPath },
           },
@@ -64,22 +130,12 @@ export function generateConfigBlock(
       }, null, 2);
 
     case "claude":
-      return JSON.stringify({
-        mcpServers: {
-          "dwg-loop": {
-            command,
-            args,
-            env: { DWG_LOOP_CONFIG: configPath },
-          },
-        },
-      }, null, 2);
-
     case "claude-code":
       return JSON.stringify({
         mcpServers: {
           "dwg-loop": {
-            command,
-            args,
+            command: server.command,
+            args: server.args,
             env: { DWG_LOOP_CONFIG: configPath },
           },
         },
@@ -90,23 +146,22 @@ export function generateConfigBlock(
         mcpServers: {
           "dwg-loop": {
             type: "stdio",
-            command,
-            args,
+            command: server.command,
+            args: server.args,
             env: { DWG_LOOP_CONFIG: configPath },
           },
         },
       }, null, 2);
 
     case "codex":
+      // TOML literal strings (single quotes) so Windows paths survive intact
       return [
         "[mcp_servers.dwg-loop]",
-        `command = "${localCliPath ? "node" : "npx"}"`,
-        localCliPath
-          ? `args = ["${localCliPath}", "serve"]`
-          : `args = ["-y", "@dwgintel/loop", "serve"]`,
+        `command = '${server.command}'`,
+        `args = [${server.args.map((a) => `'${a}'`).join(", ")}]`,
         "",
         "[mcp_servers.dwg-loop.env]",
-        `DWG_LOOP_CONFIG = "${configPath}"`,
+        `DWG_LOOP_CONFIG = '${configPath}'`,
       ].join("\n");
 
     case "other":
@@ -114,8 +169,8 @@ export function generateConfigBlock(
       return JSON.stringify({
         mcpServers: {
           "dwg-loop": {
-            command,
-            args,
+            command: server.command,
+            args: server.args,
             env: { DWG_LOOP_CONFIG: configPath },
           },
         },
@@ -172,28 +227,33 @@ export function autoWriteConfig(
   client: ClientId,
   configPath: string,
   scope: Scope,
-  localCliPath: string | null
+  server: ServerCommand = resolveServerCommand()
 ): AutoWriteResult {
   switch (client) {
     case "claude-code":
-      return autoWriteClaudeCode(configPath, scope, localCliPath);
+      return autoWriteClaudeCode(configPath, scope, server);
     case "codex":
-      return autoWriteCodex(configPath, scope, localCliPath);
+      return autoWriteCodex(configPath, scope, server);
     case "opencode":
-      return autoWriteFileClient(client, configPath, scope, "mcp", "dwg-loop");
+      return autoWriteFileClient(client, configPath, scope, "mcp", "dwg-loop", server);
     case "claude":
-      return autoWriteFileClient(client, configPath, scope, "mcpServers", "dwg-loop");
+      return autoWriteFileClient(client, configPath, scope, "mcpServers", "dwg-loop", server);
     case "cursor":
-      return autoWriteFileClient(client, configPath, scope, "mcpServers", "dwg-loop");
+      return autoWriteFileClient(client, configPath, scope, "mcpServers", "dwg-loop", server);
     default:
       return { success: false, message: "Print-only client — no auto-write available." };
   }
 }
 
+/** Shell-quote one argument for execSync (cmd.exe / sh). */
+function q(s: string): string {
+  return `"${s.replace(/"/g, "")}"`;
+}
+
 function autoWriteClaudeCode(
   configPath: string,
   scope: Scope,
-  localCliPath: string | null
+  server: ServerCommand
 ): AutoWriteResult {
   try {
     execSync("claude --version", { stdio: "pipe", timeout: 5000 });
@@ -205,14 +265,9 @@ function autoWriteClaudeCode(
     };
   }
 
-  const cmd = localCliPath ? localCliPath : "npx";
-  const cmdArgs = localCliPath
-    ? ["serve"]
-    : ["-y", "@dwgintel/loop", "serve"];
-
   const scopeFlag = scope === "project" ? "--scope project" : "--scope user";
-  const envFlag = `--env DWG_LOOP_CONFIG=${configPath}`;
-  const fullCmd = `claude mcp add ${scopeFlag} dwg-loop ${envFlag} -- ${cmd} ${cmdArgs.join(" ")}`;
+  const envFlag = `--env ${q(`DWG_LOOP_CONFIG=${configPath}`)}`;
+  const fullCmd = `claude mcp add ${scopeFlag} dwg-loop ${envFlag} -- ${q(server.command)} ${server.args.map(q).join(" ")}`;
 
   try {
     execSync(fullCmd, { stdio: "pipe", timeout: 10000 });
@@ -233,7 +288,7 @@ function autoWriteClaudeCode(
 function autoWriteCodex(
   configPath: string,
   scope: Scope,
-  localCliPath: string | null
+  server: ServerCommand
 ): AutoWriteResult {
   try {
     execSync("codex --version", { stdio: "pipe", timeout: 5000 });
@@ -245,13 +300,8 @@ function autoWriteCodex(
     };
   }
 
-  const cmd = localCliPath ? localCliPath : "npx";
-  const cmdArgs = localCliPath
-    ? ["serve"]
-    : ["-y", "@dwgintel/loop", "serve"];
-
-  const envFlag = `--env DWG_LOOP_CONFIG=${configPath}`;
-  const fullCmd = `codex mcp add dwg-loop ${envFlag} -- ${cmd} ${cmdArgs.join(" ")}`;
+  const envFlag = `--env ${q(`DWG_LOOP_CONFIG=${configPath}`)}`;
+  const fullCmd = `codex mcp add dwg-loop ${envFlag} -- ${q(server.command)} ${server.args.map(q).join(" ")}`;
 
   try {
     execSync(fullCmd, { stdio: "pipe", timeout: 10000 });
@@ -274,7 +324,8 @@ function autoWriteFileClient(
   configPath: string,
   scope: Scope,
   mcpKey: string,
-  entryKey: string
+  entryKey: string,
+  server: ServerCommand
 ): AutoWriteResult {
   const targetFile = getConfigFilePath(client, scope);
   if (!targetFile) {
@@ -291,7 +342,7 @@ function autoWriteFileClient(
 
   if (existsSync(targetFile)) {
     const raw = readFileSync(targetFile, "utf-8");
-    hadComments = stripJsonComments(raw) !== raw.trim();
+    hadComments = stripJsonComments(raw).trim() !== raw.trim();
     try {
       existing = JSON.parse(stripJsonComments(raw)) as Record<string, unknown>;
     } catch {
@@ -303,33 +354,25 @@ function autoWriteFileClient(
     }
   }
 
-  const localCliPath = detectLocalCliPath();
-
   let entry: Record<string, unknown>;
   if (client === "opencode") {
     entry = {
       type: "local",
-      command: localCliPath
-        ? ["node", localCliPath, "serve"]
-        : ["npx", "-y", "@dwgintel/loop", "serve"],
+      command: [server.command, ...server.args],
       enabled: true,
       environment: { DWG_LOOP_CONFIG: configPath },
     };
   } else if (client === "cursor") {
     entry = {
       type: "stdio",
-      command: localCliPath ? "node" : "npx",
-      args: localCliPath
-        ? [localCliPath, "serve"]
-        : ["-y", "@dwgintel/loop", "serve"],
+      command: server.command,
+      args: server.args,
       env: { DWG_LOOP_CONFIG: configPath },
     };
   } else {
     entry = {
-      command: localCliPath ? "node" : "npx",
-      args: localCliPath
-        ? [localCliPath, "serve"]
-        : ["-y", "@dwgintel/loop", "serve"],
+      command: server.command,
+      args: server.args,
       env: { DWG_LOOP_CONFIG: configPath },
     };
   }
@@ -403,26 +446,14 @@ function stripJsonComments(text: string): string {
   return result;
 }
 
-let _localCliPath: string | null | undefined;
-
-export function setLocalCliPath(path: string | null): void {
-  _localCliPath = path;
-}
-
-export function detectLocalCliPath(): string | null {
-  if (_localCliPath !== undefined) return _localCliPath;
-  const localPath = resolve(__dirname, "cli.js");
-  _localCliPath = existsSync(localPath) ? localPath : null;
-  return _localCliPath;
-}
-
 export function getClientHelpText(client: ClientId): string {
+  const spec = getPinnedSpec();
   switch (client) {
     case "claude-code":
-      return "Using Claude Code? Run: claude mcp add --scope user dwg-loop --env DWG_LOOP_CONFIG=<path> -- npx -y @dwgintel/loop serve";
+      return `Using Claude Code? Run: claude mcp add --scope user dwg-loop --env DWG_LOOP_CONFIG=<path> -- npx -y ${spec} serve`;
     case "codex":
-      return "Using Codex CLI? Run: codex mcp add dwg-loop --env DWG_LOOP_CONFIG=<path> -- npx -y @dwgintel/loop serve";
+      return `Using Codex CLI? Run: codex mcp add dwg-loop --env DWG_LOOP_CONFIG=<path> -- npx -y ${spec} serve`;
     default:
-      return "If your client uses a different config format, the key parameters are:\n  command: npx\n  args: [\"-y\", \"@dwgintel/loop\", \"serve\"]\n  env: DWG_LOOP_CONFIG=<your config path>\nAdjust to your client's format.";
+      return "If your client uses a different config format, use the printed JSON block — the key parameters are the command and args shown plus env DWG_LOOP_CONFIG=<your config path>.";
   }
 }

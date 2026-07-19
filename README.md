@@ -11,27 +11,46 @@
 
 ## Quick start
 
-### Prerequisites
+### 1. Install Node.js 20 or later
 
-- [Node.js](https://nodejs.org) v20 or later
-- A local AI client that supports MCP (see supported clients below)
-- A DWG INTEL membership with an MCP token
+Check whether you have it: open a terminal (PowerShell on Windows, Terminal on Mac) and run `node -v`. If you see v20 or higher, skip ahead.
 
-### Install and set up
+- **Windows** - download the LTS installer from [nodejs.org](https://nodejs.org) (choose Windows Installer)
+- **Mac** - download from [nodejs.org](https://nodejs.org), or `brew install node`
+- **Linux** - use your package manager or [nodejs.org](https://nodejs.org)
+
+### 2. Copy your DWG MCP token
+
+Log into your [DWG INTEL account](https://dwg-research-center.vercel.app) and copy your MCP token from your account settings. It starts with `dwg_`.
+
+### 3. Run the installer
 
 ```bash
 npx -y @dwgintel/loop init
 ```
 
-This will:
-1. Ask for your vault folder path (or create one)
-2. Ask for your DWG MCP token
-3. Ask which AI client you use (interactive menu)
-4. Ask whether to install globally or for this project
-5. Seed the vault with folder structure and rule files
-6. Auto-write the MCP config into your AI client's config file (or print it if auto-write isn't available)
+The installer does the work for you:
 
-### Supported AI clients
+1. **Vault folder** - press Enter to accept the default (`~/dwg-vault`), or type your own path
+2. **Token** - paste your token (hidden as you type); it's checked against DWG immediately, so a typo can't silently break your setup
+3. **AI client** - detected clients are marked automatically; just confirm the right one
+4. **Scope** - "all your projects" (recommended) or just one folder
+5. Your vault is seeded with its folder structure and rule files
+6. The MCP config is written into your AI client's config file with full absolute paths (no `npx` PATH problems), or printed for manual paste if auto-write isn't available
+
+### 4. Restart your AI client
+
+Quit it fully and reopen, then start a new conversation and say **DWG help**. On first connection the AI will greet you and offer the onboarding interview.
+
+### Verify any time
+
+```bash
+npx -y @dwgintel/loop doctor
+```
+
+Checks: version + updates, config, vault access, seed, recorded server file, token, DWG connectivity.
+
+## Supported AI clients
 
 | Client | Auto-write | Scope | Notes |
 |---|---|---|---|
@@ -42,9 +61,7 @@ This will:
 | **Codex CLI** | Yes (via `codex mcp add`) | Global / project | Uses Codex CLI to add the server |
 | **Other** | No (prints config) | — | Prints config block with guidance |
 
-If auto-write fails (e.g., CLI not on PATH), it falls back to printing the config with the exact file path to paste it into.
-
-Restart your AI client. On first connection, the AI will greet you and offer to run the onboarding interview.
+Generated configs point at the exact Node binary and server file used during install (absolute paths), pinned to the installed version - so clients that can't see `npx` on their PATH still start reliably. If auto-write fails (e.g., CLI not on PATH), it falls back to printing the config with the exact file path to paste it into.
 
 ### Non-interactive setup
 
@@ -62,13 +79,29 @@ npx -y @dwgintel/loop init --vault ~/dwg-vault --token dwg_xxx --client opencode
 | `--scope <scope>` | `global` (default) or `project` |
 | `--yes` | Skip all prompts, use defaults or provided flags |
 
-### Verify setup
+## Updating
+
+Your install runs a **fixed version** - nothing changes underneath you mid-session. When a new version is released, your AI mentions it once at a natural pause ("A Loop Kit update is available..."). To install it:
 
 ```bash
-dwg-loop doctor
+npx -y @dwgintel/loop update
 ```
 
-Checks: config, vault access, seed, token, DWG connectivity.
+(`dwg-loop update` if you installed globally.)
+
+One command does everything: downloads the new version, re-points your AI client's config at it, and refreshes the vault's rule files - your personal notes are never touched.
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| **"node" or "npx" is not recognised** | Node.js isn't installed (or the terminal was open during install). Install Node 20+ from [nodejs.org](https://nodejs.org), then open a **new** terminal. |
+| **Server needs Node 20+** | You're on an old Node version. Update from [nodejs.org](https://nodejs.org) (or `brew install node` on Mac). |
+| **AI client starts but no DWG tools appear** | Restart the client *completely* (quit, not just close the window). Still nothing? Run `npx -y @dwgintel/loop doctor`. |
+| **Token rejected (401)** | The token is wrong or revoked. Re-copy it from your DWG INTEL account and re-run `npx -y @dwgintel/loop init` (your vault notes are never overwritten by init). |
+| **Worked before, now the server won't start after cleaning npm cache** | The recorded server file was removed. Run `npx -y @dwgintel/loop update` - it repairs the config. |
+| **Where is my client's config file?** | opencode: `~/.config/opencode/opencode.json` · Claude Desktop (Win): `%APPDATA%\Claude\claude_desktop_config.json` · (Mac): `~/Library/Application Support/Claude/claude_desktop_config.json` · Cursor: `~/.cursor/mcp.json` · Codex: `~/.codex/config.toml` |
+| **Something else** | Run `npx -y @dwgintel/loop doctor` and share the output with DWG support. `npx -y @dwgintel/loop version` gives your version number. |
 
 ## Commands
 
@@ -76,14 +109,18 @@ Checks: config, vault access, seed, token, DWG connectivity.
 |---|---|
 | `dwg-loop init` | First-time setup — interactive client menu + auto-write |
 | `dwg-loop init --client opencode --scope project --yes` | Non-interactive setup for opencode, project scope |
+| `dwg-loop update` | Update to the latest version + refresh vault rules |
+| `dwg-loop init --repoint` | Re-point the recorded AI client at this install (repair) |
 | `dwg-loop serve` | Start MCP server (stdio) |
-| `dwg-loop doctor` | Health check: config, vault, seed, token, DWG connectivity |
+| `dwg-loop doctor` | Health check: version, config, vault, seed, server file, token, DWG connectivity |
 | `dwg-loop seed` | Apply vault seed (skips existing files) |
 | `dwg-loop seed --force` | Overwrite existing contract files (DWG-CONTEXT.md, etc.) |
 | `dwg-loop seed --upgrade` | Refresh `.dwg/` rules + schemas only, no touch on personal notes |
 | `dwg-loop config [key] [value]` | Read/set config |
 | `dwg-loop emit-config <client> --scope <global|project>` | Print MCP config for any client (opencode, claude, claude-code, cursor, codex, other) |
 | `dwg-loop version` | Print version |
+
+Installed via npx (the default), prefix commands with `npx -y @dwgintel/loop` instead of `dwg-loop` — e.g. `npx -y @dwgintel/loop doctor`.
 
 ## In-session commands
 
@@ -133,13 +170,8 @@ your-vault/
 
 - Your vault stays on your machine. DWG never receives vault contents.
 - Only public identifiers (addresses, tokens, chains) are sent to DWG for live fact lookups.
+- Your MCP token is stored locally in `~/.dwg-loop/` and never printed or logged.
 - Sync your vault folder with any third-party tool (Obsidian Sync, iCloud, Syncthing, etc.)
-
-## How updates work
-
-- Bump `@dwgintel/loop` version in your AI client config (or re-run `npx -y @dwgintel/loop@latest init`)
-- Run `dwg-loop seed --upgrade` to refresh rule files without touching your personal notes
-- One version number for support: `dwg-loop version`
 
 ## License
 

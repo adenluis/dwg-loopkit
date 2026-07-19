@@ -4,6 +4,7 @@ import { loadPlaybook, isFirstRun, readVaultMetadata } from "../playbook/load.js
 import { loadConfig, getToken } from "../config-loader.js";
 import type { DwgProxyState } from "../proxy/dwg-client.js";
 import type { ToolDef, ToolHandler } from "../types.js";
+import { getPackageVersion, getLatestVersion, isNewerVersion, getUserCommandPrefix } from "../version.js";
 
 type DwgStateGetter = () => DwgProxyState | null;
 
@@ -109,12 +110,40 @@ export function createSessionStartTool(vaultPath: string, dwgStateGetter?: DwgSt
         "Read DWG-CONTEXT.md silently using vault_get_context. Then follow the operating rules for every question.";
     }
 
+    const updateNotice = await buildUpdateNotice();
+    if (updateNotice) {
+      output += updateNotice;
+    }
+
     return {
       content: [{ type: "text", text: output }],
     };
   };
 
   return { tools, handler };
+}
+
+/**
+ * Checks (cached, max once per 24h) whether a newer Loop Kit is published.
+ * Returns an instruction block for the AI, or null when up to date / offline.
+ */
+async function buildUpdateNotice(): Promise<string | null> {
+  try {
+    const latest = await getLatestVersion();
+    if (!latest) return null;
+    const current = getPackageVersion();
+    if (!isNewerVersion(latest, current)) return null;
+    const cmd = `${getUserCommandPrefix()} update`;
+    return (
+      "\n\n## LOOP KIT UPDATE AVAILABLE\n\n" +
+      `DWG Loop Kit ${latest} has been released (this install is ${current}). ` +
+      "At a natural pause, mention it ONCE in plain language: " +
+      `"A Loop Kit update (${latest}) is available. To install it, open a terminal and run: ${cmd}". ` +
+      "Do not interrupt a task to say this, do not repeat it within the session, and do not speculate about what changed."
+    );
+  } catch {
+    return null;
+  }
 }
 
 function readContextFile(vaultPath: string): string {
@@ -229,6 +258,10 @@ function buildHelpMenu(vaultPath: string): string {
 
 function buildStatusReport(vaultPath: string, dwgStateGetter?: DwgStateGetter): string {
   const lines: string[] = ["# DWG Loop Kit — System Status", ""];
+
+  lines.push("## Loop Kit");
+  lines.push(`- Version: ${getPackageVersion()}`);
+  lines.push("");
 
   // Vault path
   lines.push("## Vault");

@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-19
+
+### Added
+- Generated MCP configs now use absolute paths to the Node binary and the installed `cli.js` — GUI clients (Claude Desktop, Cursor) no longer fail when `npx` isn't on their PATH; faster, offline-safe starts
+- Configs are pinned to the exact installed version; fallback form is `npx -y @dwgintel/loop@<version>` (never unpinned)
+- `dwg-loop update`: downloads the latest version, re-points the AI client config, and refreshes vault rules in one command (global installs update via `npm i -g` and hand off to the new binary)
+- `dwg-loop init --repoint`: re-point the recorded AI client at the current install + `seed --upgrade` (also repairs configs after an npm cache clear)
+- Update notifications in-session: `dwg_loop_session_start` checks the npm registry (cached 24h, offline-tolerant) and has the AI mention an available update once, in plain language, with the exact update command
+- Install metadata recorded in `~/.dwg-loop/config.json` (client, scope, server path, timestamp) to drive update/repoint
+- Token UX: hidden (masked) input, `dwg_` prefix sanity check, and live validation against DWG during init with retry — a bad token is caught before the AI client ever starts
+- Client auto-detection: installed clients are marked in the init menu and pre-selected as the default
+- Vault path prompt offers a default (`~/dwg-vault`); scope question reworded to plain English ("all your projects / just this folder")
+- Node.js >= 20 preflight with OS-specific guidance instead of a deep crash
+- End-of-init summary: exact next steps (restart client → "DWG help") plus the correct doctor command for the install mode
+- Doctor: shows installed/latest versions with update hint, checks the recorded server file still exists (with repair instructions), shares init's token-validation code
+- Interactive init now tolerates pasted/piped multi-line input (buffered questioner; previously extra lines were dropped between prompts)
+
+### Fixed
+- Re-running `init` no longer overwrites existing vault contract files (DWG-CONTEXT.md, INDEX.md, ACTIVITY-LOG.md) — seed now skips existing files; `--force` remains available explicitly
+- `detectLocalCliPath()` used bare `__dirname` in ESM (latent ReferenceError); replaced by the new server-command resolver
+- False "comments were removed during merge" warning when the existing client config had no comments
+- Shell quoting for `claude mcp add` / `codex mcp add` commands (paths with spaces, e.g. `C:\Program Files\nodejs`)
+- Codex print-config now emits TOML literal strings so Windows paths survive a paste
+- README: `doctor` invocation works for npx installs (`npx -y @dwgintel/loop doctor`); added token sourcing, per-client config locations, and a troubleshooting table
+- `dwg-loop version` now works as a subcommand (previously only `--version`; the README has promised the subcommand since 0.1.0)
+
 ## [0.2.0] - 2026-07-16
 
 ### Added

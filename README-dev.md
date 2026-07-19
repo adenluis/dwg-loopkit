@@ -37,23 +37,23 @@ node dist/cli.js init
 ```
 
 This will:
-1. Ask for your vault folder path (or create one)
-2. Ask for your DWG MCP token
-3. Show an interactive menu to pick your AI client (opencode, Claude Desktop, Claude Code, Cursor, Codex CLI, Other)
-4. Ask whether to install globally or for this project (where supported)
-5. Seed the vault with folder structure and rule files
+1. Ask for your vault folder path (default `~/dwg-vault` — Enter accepts)
+2. Ask for your DWG MCP token (masked input, validated live against DWG)
+3. Show an interactive menu to pick your AI client (opencode, Claude Desktop, Claude Code, Cursor, Codex CLI, Other) — installed clients are auto-detected and pre-selected
+4. Ask whether to use it in all projects or just this folder (where supported)
+5. Seed the vault with folder structure and rule files (never overwrites existing contract files)
 6. Auto-write the MCP config into your AI client's config file (or print it if auto-write isn't available)
 
-Use `--local` so the generated config points at this local build instead of npx:
+Generated configs always point at the exact build that ran init (absolute node + `dist/cli.js` paths) — so running `node dist/cli.js init` from this repo writes a config that uses this local build automatically. The old `--local` flag is deprecated (accepted but no longer needed):
 
 ```bash
-node dist/cli.js init --local --client opencode
+node dist/cli.js init --client opencode
 ```
 
 Or run fully non-interactive:
 
 ```bash
-node dist/cli.js init --local --client opencode --scope project --vault ~/dwg-vault --token dwg_xxx --yes
+node dist/cli.js init --client opencode --scope project --vault ~/dwg-vault --token dwg_xxx --yes
 ```
 
 ### Step 3 - Connect your AI
@@ -72,9 +72,9 @@ The init command auto-writes the MCP config into your AI client's config file wh
 Example with a specific client:
 
 ```bash
-node dist/cli.js init --local --client opencode --scope project
-node dist/cli.js init --local --client claude-code --scope user
-node dist/cli.js init --local --client cursor --scope global
+node dist/cli.js init --client opencode --scope project
+node dist/cli.js init --client claude-code --scope user
+node dist/cli.js init --client cursor --scope global
 ```
 
 If auto-write fails (e.g. CLI not on PATH), the config is printed with the exact file path for manual paste. Other MCP-compatible clients (Cline, Roo Code, Continue.dev) use the same stdio transport and should technically work with the "Other" option.
@@ -98,7 +98,13 @@ npm install
 npm run build
 ```
 
-Your vault and config are not affected. To refresh rule files in your vault:
+Then re-point your AI client's config at the rebuilt CLI and refresh vault rules:
+
+```bash
+node dist/cli.js init --repoint
+```
+
+Your vault notes and config are not affected. To refresh rule files only:
 
 ```bash
 node dist/cli.js seed --upgrade
@@ -106,15 +112,15 @@ node dist/cli.js seed --upgrade
 
 ---
 
-## Install (when published to npm - not yet available)
+## Install (published npm package)
 
-Once published, the one-command install will be:
+The package is live on npm — members install with:
 
 ```bash
 npx -y @dwgintel/loop init
 ```
 
-No clone or build needed. The MCP config will use `npx -y @dwgintel/loop serve` automatically.
+No clone or build needed. The generated MCP config points at the absolute path of the downloaded package's `cli.js` (pinned to that exact version). See README.md for the member-facing flow.
 
 ---
 
@@ -124,13 +130,15 @@ No clone or build needed. The MCP config will use `npx -y @dwgintel/loop serve` 
 |---|---|
 | `node dist/cli.js init` | First-time setup — interactive client menu + auto-write |
 | `node dist/cli.js init --client <id> --scope <global|project> --yes` | Non-interactive setup |
+| `node dist/cli.js init --repoint` | Re-point the recorded AI client at this build + refresh rules |
+| `node dist/cli.js update` | Update to latest published version (for npm-installed copies) |
 | `node dist/cli.js serve` | Start MCP server (stdio) |
-| `node dist/cli.js doctor` | Health check: config, vault, seed, token, DWG connectivity |
+| `node dist/cli.js doctor` | Health check: version, config, vault, seed, server file, token, DWG connectivity |
 | `node dist/cli.js seed` | Apply vault seed (skips existing files) |
 | `node dist/cli.js seed --force` | Overwrite existing contract files (DWG-CONTEXT.md, etc.) |
 | `node dist/cli.js seed --upgrade` | Refresh `.dwg/` rules + schemas only, no touch on personal notes |
 | `node dist/cli.js config [key] [value]` | Read/set config |
-| `node dist/cli.js emit-config <client> --scope <global|project> --local` | Print MCP config for any client (opencode, claude, claude-code, cursor, codex, other) |
+| `node dist/cli.js emit-config <client> --scope <global|project>` | Print MCP config for any client (opencode, claude, claude-code, cursor, codex, other) |
 | `node dist/cli.js version` | Print version |
 
 ## In-session commands
