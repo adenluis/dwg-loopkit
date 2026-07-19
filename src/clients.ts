@@ -212,7 +212,7 @@ function autoWriteClaudeCode(
 
   const scopeFlag = scope === "project" ? "--scope project" : "--scope user";
   const envFlag = `--env DWG_LOOP_CONFIG=${configPath}`;
-  const fullCmd = `claude mcp add ${scopeFlag} ${envFlag} dwg-loop -- ${cmd} ${cmdArgs.join(" ")}`;
+  const fullCmd = `claude mcp add ${scopeFlag} dwg-loop ${envFlag} -- ${cmd} ${cmdArgs.join(" ")}`;
 
   try {
     execSync(fullCmd, { stdio: "pipe", timeout: 10000 });
@@ -251,7 +251,7 @@ function autoWriteCodex(
     : ["-y", "@dwgintel/loop", "serve"];
 
   const envFlag = `--env DWG_LOOP_CONFIG=${configPath}`;
-  const fullCmd = `codex mcp add ${envFlag} dwg-loop -- ${cmd} ${cmdArgs.join(" ")}`;
+  const fullCmd = `codex mcp add dwg-loop ${envFlag} -- ${cmd} ${cmdArgs.join(" ")}`;
 
   try {
     execSync(fullCmd, { stdio: "pipe", timeout: 10000 });

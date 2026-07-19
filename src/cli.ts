@@ -27,6 +27,14 @@ const __dirname = dirname(__filename);
 const CONFIG_DIR = join(homedir(), ".dwg-loop");
 const CONFIG_PATH = join(CONFIG_DIR, "config.json");
 
+function expandTilde(p: string): string {
+  if (p === "~") return homedir();
+  if (p.startsWith("~/") || p.startsWith("~\\")) {
+    return join(homedir(), p.slice(2));
+  }
+  return p;
+}
+
 const program = new Command();
 
 program
@@ -109,14 +117,14 @@ async function init(opts: {
     vaultPath = resolve(homedir(), "dwg-vault");
     console.log(`  Using default vault path: ${vaultPath}`);
   } else {
-    vaultPath = (await rl.question("  Path to your vault folder: ")).trim();
+    vaultPath = (await rl.question("  Path to your vault folder (e.g. ~/dwg-vault): ")).trim();
   }
   if (!vaultPath) {
     console.error("  Vault path is required.");
     process.exit(1);
   }
 
-  const resolvedVault = resolve(vaultPath);
+  const resolvedVault = resolve(expandTilde(vaultPath));
 
   // Create vault if missing
   if (!existsSync(resolvedVault)) {
@@ -370,7 +378,7 @@ async function seedCmd(opts: { vault?: string; force?: boolean; upgrade?: boolea
     }
   }
 
-  await applySeed(resolve(vaultPath), opts.force ?? false, opts.upgrade ?? false);
+  await applySeed(resolve(expandTilde(vaultPath)), opts.force ?? false, opts.upgrade ?? false);
 }
 
 async function seedAction(opts: { vault?: string; force?: boolean; upgrade?: boolean }): Promise<void> {
