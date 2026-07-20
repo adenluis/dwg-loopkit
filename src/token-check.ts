@@ -1,3 +1,5 @@
+import { getPackageVersion } from "./version.js";
+
 export type TokenCheck =
   | { status: "ok" }
   | { status: "rejected"; httpStatus: number }
@@ -21,6 +23,7 @@ export async function checkTokenWithDwg(
         "Content-Type": "application/json",
         Accept: "application/json, text/event-stream",
         Authorization: `Bearer ${token}`,
+        "User-Agent": `dwg-loop/${getPackageVersion()}`,
       },
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
       signal: AbortSignal.timeout(timeoutMs),

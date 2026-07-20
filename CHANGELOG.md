@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-07-19
+
+### Added
+- Every call to the DWG server now sends `User-Agent: dwg-loop/<version>` — the research center can tell Loop Kit connections apart from direct /mcp connections (powers the dashboard's Loop Kit connection state)
+- `X-DWG-AI-Client` hint header carries the AI client recorded at init (claude, cursor, …) so the dashboard can show "Loop Kit via Cursor"-level detail
+- `agent-zero` is now a first-class client id (`--client agent-zero`, interactive menu entry): print-only config with Agent-Zero-specific guidance (in-container installs should pick a persistent, mapped vault path)
+
 ## [0.3.0] - 2026-07-19
 
 ### Added

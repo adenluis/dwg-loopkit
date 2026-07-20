@@ -327,7 +327,7 @@ async function init(opts: {
       console.log("\n  Paste this into your AI client's MCP configuration.\n");
     }
 
-    if (clientId === "other") {
+    if (clientId === "other" || clientId === "agent-zero") {
       console.log(`  ${getClientHelpText(clientId)}\n`);
     }
   }

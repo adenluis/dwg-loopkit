@@ -3,11 +3,14 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from "fs";
 import { tmpdir, platform } from "os";
 import { join } from "path";
 import {
+  CLIENTS,
+  resolveClientId,
   resolveServerCommand,
   generateConfigBlock,
   detectInstalledClients,
 } from "../src/clients.js";
 import { getPinnedSpec } from "../src/version.js";
+import { buildDwgHeaders } from "../src/proxy/dwg-client.js";
 
 describe("resolveServerCommand", () => {
   let tmp: string;
@@ -69,6 +72,44 @@ describe("generateConfigBlock", () => {
     expect(block).toContain("command = 'C:\\Program Files\\nodejs\\node.exe'");
     expect(block).toContain("args = ['C:\\loop\\cli.js', 'serve']");
     expect(block).toContain(`DWG_LOOP_CONFIG = '${configPath}'`);
+  });
+
+  it("agent-zero: emits the generic mcpServers JSON block", () => {
+    const block = JSON.parse(generateConfigBlock("agent-zero", configPath, server));
+    const entry = block.mcpServers["dwg-loop"];
+    expect(entry.command).toBe("/usr/local/bin/node");
+    expect(entry.args).toEqual(["/opt/loop/dist/cli.js", "serve"]);
+    expect(entry.env.DWG_LOOP_CONFIG).toBe(configPath);
+  });
+});
+
+describe("agent-zero client entry", () => {
+  it("resolves agent-zero aliases", () => {
+    expect(resolveClientId("agent-zero")).toBe("agent-zero");
+    expect(resolveClientId("Agent Zero")).toBe("agent-zero");
+    expect(resolveClientId("agentzero")).toBe("agent-zero");
+    expect(resolveClientId("something-else")).toBe("other");
+  });
+
+  it("is listed as print-only", () => {
+    const a0 = CLIENTS.find((c) => c.id === "agent-zero");
+    expect(a0).toBeDefined();
+    expect(a0!.autoWriteStrategy).toBe("print-only");
+    expect(a0!.hasScopeChoice).toBe(false);
+  });
+});
+
+describe("buildDwgHeaders", () => {
+  it("identifies as dwg-loop with the package version", () => {
+    const headers = buildDwgHeaders("dwg_test");
+    expect(headers["Authorization"]).toBe("Bearer dwg_test");
+    expect(headers["User-Agent"]).toMatch(/^dwg-loop\/\d+\.\d+\.\d+$/);
+    expect(headers["X-DWG-AI-Client"]).toBeUndefined();
+  });
+
+  it("carries the AI-client hint when provided", () => {
+    const headers = buildDwgHeaders("dwg_test", "cursor");
+    expect(headers["X-DWG-AI-Client"]).toBe("cursor");
   });
 });
 

@@ -14,6 +14,7 @@ export type ClientId =
   | "claude-code"
   | "cursor"
   | "codex"
+  | "agent-zero"
   | "other";
 
 export type Scope = "global" | "project";
@@ -31,6 +32,7 @@ export const CLIENTS: ClientDef[] = [
   { id: "claude-code", label: "Claude Code CLI", hasScopeChoice: true, autoWriteStrategy: "cli" },
   { id: "cursor", label: "Cursor", hasScopeChoice: true, autoWriteStrategy: "file" },
   { id: "codex", label: "Codex CLI", hasScopeChoice: true, autoWriteStrategy: "cli" },
+  { id: "agent-zero", label: "Agent-Zero", hasScopeChoice: false, autoWriteStrategy: "print-only" },
   { id: "other", label: "Other / Not listed", hasScopeChoice: false, autoWriteStrategy: "print-only" },
 ];
 
@@ -41,6 +43,7 @@ export function resolveClientId(input: string): ClientId {
   if (lower === "claude-code" || lower === "claude code") return "claude-code";
   if (lower === "cursor") return "cursor";
   if (lower === "codex" || lower === "codex-cli") return "codex";
+  if (lower === "agent-zero" || lower === "agentzero" || lower === "agent zero") return "agent-zero";
   return "other";
 }
 
@@ -453,6 +456,8 @@ export function getClientHelpText(client: ClientId): string {
       return `Using Claude Code? Run: claude mcp add --scope user dwg-loop --env DWG_LOOP_CONFIG=<path> -- npx -y ${spec} serve`;
     case "codex":
       return `Using Codex CLI? Run: codex mcp add dwg-loop --env DWG_LOOP_CONFIG=<path> -- npx -y ${spec} serve`;
+    case "agent-zero":
+      return "Agent-Zero: paste the printed JSON into your MCP server settings. If the Loop Kit runs inside the Agent-Zero container, choose a vault path in persistent, mapped storage so a container rebuild can't remove your knowledge system.";
     default:
       return "If your client uses a different config format, use the printed JSON block — the key parameters are the command and args shown plus env DWG_LOOP_CONFIG=<your config path>.";
   }

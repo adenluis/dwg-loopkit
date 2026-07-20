@@ -1,6 +1,7 @@
 import type { LoopConfig } from "../config.js";
 import { getToken } from "../config-loader.js";
 import type { ToolDef, ToolHandler } from "../types.js";
+import { getPackageVersion } from "../version.js";
 
 interface RemoteTool {
   name: string;
@@ -24,12 +25,24 @@ function parseSseResponse(text: string): Record<string, unknown> | null {
   }
 }
 
-function dwgHeaders(token: string): Record<string, string> {
-  return {
+/**
+ * Headers for every call to the DWG server. The User-Agent identifies this
+ * as a Loop Kit connection (with version) so the research center can tell
+ * Loop Kit traffic apart from direct /mcp connections — that's what powers
+ * the dashboard's Loop Kit connection state. X-DWG-AI-Client carries the AI
+ * the member configured at init (claude, cursor, …) when known.
+ */
+export function buildDwgHeaders(token: string, aiClient?: string | null): Record<string, string> {
+  const headers: Record<string, string> = {
     "Content-Type": "application/json",
     "Accept": "application/json, text/event-stream",
     "Authorization": `Bearer ${token}`,
+    "User-Agent": `dwg-loop/${getPackageVersion()}`,
   };
+  if (aiClient) {
+    headers["X-DWG-AI-Client"] = aiClient;
+  }
+  return headers;
 }
 
 export interface DwgProxyState {
@@ -42,6 +55,7 @@ export interface DwgProxyState {
 export async function createDwgProxy(config: LoopConfig): Promise<{ tools: ToolDef[]; handler: ToolHandler; state: DwgProxyState }> {
   const token = getToken(config);
   const mcpUrl = config.dwg.mcpUrl;
+  const aiClient = config.install?.client ?? null;
   const proxyPrefix = "dwg_";
 
   const state: DwgProxyState = {
@@ -62,7 +76,7 @@ export async function createDwgProxy(config: LoopConfig): Promise<{ tools: ToolD
     try {
       const response = await fetch(mcpUrl, {
         method: "POST",
-        headers: dwgHeaders(token),
+        headers: buildDwgHeaders(token, aiClient),
         body: JSON.stringify({
           jsonrpc: "2.0",
           id: 1,
@@ -120,7 +134,7 @@ export async function createDwgProxy(config: LoopConfig): Promise<{ tools: ToolD
     try {
       const response = await fetch(mcpUrl, {
         method: "POST",
-        headers: dwgHeaders(token),
+        headers: buildDwgHeaders(token, aiClient),
         body: JSON.stringify({
           jsonrpc: "2.0",
           id: Date.now(),
