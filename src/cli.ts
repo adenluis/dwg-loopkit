@@ -9,7 +9,7 @@ import { createInterface } from "readline/promises";
 import { stdin as input, stdout as output } from "process";
 import { execSync } from "child_process";
 import { DEFAULT_CONFIG, DEFAULT_DWG_MCP_URL } from "./config.js";
-import type { LoopConfig } from "./config.js";
+import type { LoopConfig, InstallMode } from "./config.js";
 import { serve } from "./serve.js";
 import {
   CLIENTS,
@@ -30,6 +30,12 @@ import {
   getThisCliPath,
   getUserCommandPrefix,
 } from "./version.js";
+import {
+  resolveInstallForInit,
+  resolveInstallMode,
+  serverForMode,
+  modeForServerPath,
+} from "./install-mode.js";
 import { checkTokenWithDwg } from "./token-check.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -79,6 +85,7 @@ program
   .option("--client <name>", "AI client: opencode | claude | claude-code | cursor | codex | other")
   .option("--scope <scope>", "config scope: global | project (default: global)")
   .option("--yes", "skip all prompts, use defaults or provided flags")
+  .option("--no-global", "skip the global install; use the npx copy")
   .option("--local", "(deprecated — configs now always point at the running build)")
   .option("--repoint", "re-point the recorded AI client at this version and refresh rules (no prompts)")
   .action(init);
@@ -142,6 +149,7 @@ async function init(opts: {
   client?: string;
   scope?: string;
   yes?: boolean;
+  noGlobal?: boolean;
   local?: boolean;
   repoint?: boolean;
 }): Promise<void> {
@@ -276,7 +284,19 @@ async function init(opts: {
   // ── Write config + token, seed vault ────────────────────────────────────
   mkdirSync(CONFIG_DIR, { recursive: true });
 
-  const server = resolveServerCommand();
+  // Install Loop Kit on this machine. Running from the npx cache (the normal
+  // first-run path) → try a pinned global install so the config points at a
+  // stable path that survives npm cache cleaning. Falls back to the npx copy
+  // with an honest line when that isn't possible (permissions, offline).
+  const install = resolveInstallForInit({ noGlobal: opts.noGlobal });
+  if (install.mode === "global" && install.attemptedGlobal) {
+    console.log("  [OK] Installed Loop Kit on this machine (stable path — survives npm cache cleaning).");
+  } else if (install.attemptedGlobal) {
+    console.log("  [!] Couldn't install globally (permissions). Using the npx copy — it works the same;");
+    console.log("      if DWG tools ever vanish after a cache clean, run the update command to repair.");
+  }
+  const server = install.server;
+
   const config: LoopConfig = {
     ...DEFAULT_CONFIG,
     dwg: {
@@ -292,6 +312,7 @@ async function init(opts: {
       client: clientId,
       scope,
       server: server.args[0] ?? getThisCliPath(),
+      mode: install.mode,
       recordedAt: new Date().toISOString(),
     },
   };
@@ -459,8 +480,14 @@ async function repointExisting(): Promise<void> {
     process.exit(1);
   }
   const config = loadConfigSafe(CONFIG_PATH);
-  const server = resolveServerCommand();
+  // Preserve the recorded install mode: a global install repoints at the
+  // stable global path, an npx-cache install at the running (fresh) copy.
+  const mode = resolveInstallMode({ install: config.install });
+  const server = serverForMode(mode);
+  const serverPath = server.args[0] ?? getThisCliPath();
+  const finalMode = modeForServerPath(serverPath);
   console.log(`  Version: ${getPackageVersion()}`);
+  console.log(`  Install mode: ${finalMode}`);
 
   const install = config.install;
   if (!install?.client) {
@@ -482,7 +509,8 @@ async function repointExisting(): Promise<void> {
     config.install = {
       client: clientId,
       scope,
-      server: server.args[0] ?? getThisCliPath(),
+      server: serverPath,
+      mode: finalMode,
       recordedAt: new Date().toISOString(),
     };
     writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
@@ -491,18 +519,6 @@ async function repointExisting(): Promise<void> {
   console.log("\n  Refreshing vault rules...");
   await applySeed(config.vault.path, false, true);
   console.log("\n  Done. Restart your AI client to pick up the change.\n");
-}
-
-let _isGlobalInstall: boolean | undefined;
-function isGlobalInstall(): boolean {
-  if (_isGlobalInstall !== undefined) return _isGlobalInstall;
-  try {
-    const root = execSync("npm root -g", { stdio: "pipe", timeout: 8000 }).toString().trim();
-    _isGlobalInstall = root.length > 0 && getThisCliPath().toLowerCase().startsWith(root.toLowerCase());
-  } catch {
-    _isGlobalInstall = false;
-  }
-  return _isGlobalInstall;
 }
 
 async function updateCmd(): Promise<void> {
@@ -519,14 +535,23 @@ async function updateCmd(): Promise<void> {
   console.log(latest);
 
   if (isNewerVersion(latest, current)) {
-    console.log(`\n  Updating to ${latest}...`);
     const spec = getPinnedSpec(latest);
+    // Branch on the RECORDED install mode (not just how this update was
+    // invoked) so a global install stays global even if update was run via npx.
+    let mode: InstallMode;
     try {
-      if (isGlobalInstall()) {
+      mode = resolveInstallMode({ install: loadConfigSafe(CONFIG_PATH).install });
+    } catch {
+      mode = resolveInstallMode({});
+    }
+    try {
+      if (mode === "global") {
+        console.log(`\n  Updating global install to ${latest}...`);
         execSync(`npm install -g ${spec}`, { stdio: "inherit" });
         // Hand off to the new version so it finishes the job with its own code.
         execSync("dwg-loop update", { stdio: "inherit" });
       } else {
+        console.log(`\n  Updating to ${latest}...`);
         // npx downloads the new version; its `update` sees it's latest and repoints.
         execSync(`npx -y ${spec} update`, { stdio: "inherit" });
       }
@@ -596,6 +621,17 @@ async function doctor(opts: { config?: string }): Promise<void> {
       }
     } else {
       console.log("  [INFO] No install metadata (setup predates 0.3.0) — re-run init to record your client.");
+    }
+
+    if (config.install?.mode) {
+      const m = config.install.mode;
+      const note =
+        m === "global"
+          ? "(stable path — survives npm cache cleaning)"
+          : m === "npx-cache"
+            ? "(npx copy — re-run init to move to the stable global path)"
+            : "(dev build)";
+      console.log(`  Install mode: ${m} ${note}`);
     }
 
     if (existsSync(config.vault.path)) {

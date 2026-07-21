@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-20
+
+### Added
+- `init` now installs Loop Kit **globally by default** (pinned to the running version) and points the AI client config at the stable global path — immune to npm cache pruning, the fix for the "tools vanished after a cache clean" failure mode. Falls back to the npx copy with a clear message when global install isn't possible (permissions), plus `--no-global` to opt out
+- `install.mode` recorded in config (`global` | `npx-cache` | `local`) — `update` and `init --repoint` preserve it, so a global install stays global and an npx install updates onto the fresh npx copy
+- Doctor shows the install mode with guidance
+
+### Changed
+- `update` branches on the **recorded** install mode rather than only runtime detection — running `npx -y @dwgintel/loop update` can no longer drag a global install back onto the ephemeral cache
+
 ## [0.3.1] - 2026-07-19
 
 ### Added

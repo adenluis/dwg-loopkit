@@ -44,7 +44,7 @@ This will:
 5. Seed the vault with folder structure and rule files (never overwrites existing contract files)
 6. Auto-write the MCP config into your AI client's config file (or print it if auto-write isn't available)
 
-Generated configs always point at the exact build that ran init (absolute node + `dist/cli.js` paths) — so running `node dist/cli.js init` from this repo writes a config that uses this local build automatically. The old `--local` flag is deprecated (accepted but no longer needed):
+Generated configs always point at the exact build that ran init (absolute node + `dist/cli.js` paths) — so running `node dist/cli.js init` from this repo writes a config that uses this local build automatically. The old `--local` flag is deprecated (accepted but no longer needed). Since 0.4.0, init attempts a pinned **global install** when it's running from the npx cache; from a repo checkout it detects the local build and skips that, so dev configs keep pointing here.
 
 ```bash
 node dist/cli.js init --client opencode

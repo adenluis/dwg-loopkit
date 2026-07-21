@@ -31,12 +31,13 @@ npx -y @dwgintel/loop init
 
 The installer does the work for you:
 
-1. **Vault folder** - press Enter to accept the default (`~/dwg-vault`), or type your own path
-2. **Token** - paste your token (hidden as you type); it's checked against DWG immediately, so a typo can't silently break your setup
-3. **AI client** - detected clients are marked automatically; just confirm the right one
-4. **Scope** - "all your projects" (recommended) or just one folder
-5. Your vault is seeded with its folder structure and rule files
-6. The MCP config is written into your AI client's config file with full absolute paths (no `npx` PATH problems), or printed for manual paste if auto-write isn't available
+1. **Installs Loop Kit on your machine** — a pinned global copy on a stable path that survives npm cache cleaning (if that isn't possible, it uses the npx download and tells you — either works, and `update` keeps it current)
+2. **Vault folder** - press Enter to accept the default (`~/dwg-vault`), or type your own path
+3. **Token** - paste your token (hidden as you type); it's checked against DWG immediately, so a typo can't silently break your setup
+4. **AI client** - detected clients are marked automatically; just confirm the right one
+5. **Scope** - "all your projects" (recommended) or just one folder
+6. Your vault is seeded with its folder structure and rule files
+7. The MCP config is written into your AI client's config file with full absolute paths (no `npx` PATH problems), or printed for manual paste if auto-write isn't available
 
 ### 4. Restart your AI client
 
@@ -59,6 +60,7 @@ Checks: version + updates, config, vault access, seed, recorded server file, tok
 | **Claude Code CLI** | Yes (via `claude mcp add`) | User / project | Uses Claude Code's CLI to add the server |
 | **Cursor** | Yes (file merge) | Global / project | Writes to `.cursor/mcp.json` |
 | **Codex CLI** | Yes (via `codex mcp add`) | Global / project | Uses Codex CLI to add the server |
+| **Agent-Zero** | No (prints config) | — | Prints config + guidance for its MCP settings |
 | **Other** | No (prints config) | — | Prints config block with guidance |
 
 Generated configs point at the exact Node binary and server file used during install (absolute paths), pinned to the installed version - so clients that can't see `npx` on their PATH still start reliably. If auto-write fails (e.g., CLI not on PATH), it falls back to printing the config with the exact file path to paste it into.
@@ -75,9 +77,10 @@ npx -y @dwgintel/loop init --vault ~/dwg-vault --token dwg_xxx --client opencode
 |---|---|
 | `--vault <path>` | Vault folder path (created if missing) |
 | `--token <token>` | DWG MCP token (starts with `dwg_...`) |
-| `--client <name>` | AI client: `opencode`, `claude`, `claude-code`, `cursor`, `codex`, `other` |
+| `--client <name>` | AI client: `opencode`, `claude`, `claude-code`, `cursor`, `codex`, `agent-zero`, `other` |
 | `--scope <scope>` | `global` (default) or `project` |
 | `--yes` | Skip all prompts, use defaults or provided flags |
+| `--no-global` | Skip the global install; use the npx copy |
 
 ## Updating
 
@@ -91,6 +94,8 @@ npx -y @dwgintel/loop update
 
 One command does everything: downloads the new version, re-points your AI client's config at it, and refreshes the vault's rule files - your personal notes are never touched.
 
+Installs come in two modes, and `update` preserves whichever you have: **global** (a stable path on your machine — the default since 0.4.0) or **npx copy** (falls back when global install isn't possible). `dwg-loop doctor` shows your mode; re-running `init` moves an npx-copy install onto the stable path.
+
 ## Troubleshooting
 
 | Symptom | Fix |
@@ -99,7 +104,7 @@ One command does everything: downloads the new version, re-points your AI client
 | **Server needs Node 20+** | You're on an old Node version. Update from [nodejs.org](https://nodejs.org) (or `brew install node` on Mac). |
 | **AI client starts but no DWG tools appear** | Restart the client *completely* (quit, not just close the window). Still nothing? Run `npx -y @dwgintel/loop doctor`. |
 | **Token rejected (401)** | The token is wrong or revoked. Re-copy it from your DWG INTEL account and re-run `npx -y @dwgintel/loop init` (your vault notes are never overwritten by init). |
-| **Worked before, now the server won't start after cleaning npm cache** | The recorded server file was removed. Run `npx -y @dwgintel/loop update` - it repairs the config. |
+| **Worked before, now the server won't start after cleaning npm cache** | The recorded server file was removed. Run `npx -y @dwgintel/loop update` to repair — and re-run `init` to move onto the stable global path so it can't happen again (0.4.0+ installs are global by default). |
 | **Where is my client's config file?** | opencode: `~/.config/opencode/opencode.json` · Claude Desktop (Win): `%APPDATA%\Claude\claude_desktop_config.json` · (Mac): `~/Library/Application Support/Claude/claude_desktop_config.json` · Cursor: `~/.cursor/mcp.json` · Codex: `~/.codex/config.toml` |
 | **Something else** | Run `npx -y @dwgintel/loop doctor` and share the output with DWG support. `npx -y @dwgintel/loop version` gives your version number. |
 

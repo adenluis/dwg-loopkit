@@ -1,3 +1,6 @@
+/** How Loop Kit is installed on this machine. Drives server paths + update flow. */
+export type InstallMode = "global" | "npx-cache" | "local";
+
 export interface InstallInfo {
   /** AI client id the MCP config was written for (see clients.ts) */
   client: string;
@@ -5,6 +8,8 @@ export interface InstallInfo {
   scope: "global" | "project";
   /** Absolute path to the cli.js recorded in the AI client's MCP config */
   server: string;
+  /** Install mode: global (stable npm -g path), npx-cache (ephemeral), local (dev build) */
+  mode?: InstallMode;
   /** ISO timestamp of when the client config was last written */
   recordedAt: string;
 }
